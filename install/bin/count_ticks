@@ -1,0 +1,336 @@
+#!/bin/bash -eu
+
+# Copyright (c) 2014 by Enea Software AB
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of the <organization> nor the
+#       names of its contributors may be used to endorse or promote products
+#       derived from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+HELP=false
+START=false
+END=false
+TMPFILE=false
+SAVEFILE=false
+BATCH=false
+FILE=
+TRACE_ROOT=/sys/kernel/debug/tracing
+DEFAULT_CPUSET_ROOT=/sys/fs/cgroup/cpuset
+DEFAULT_CPUSET_PREFIX=cpuset.
+LOG=${TRACE_ROOT}/trace
+
+CMD=$(basename $0)
+
+usage()
+{
+    cat <<EOF
+usage:
+${CMD} --help
+${CMD} --cpu <cpu> --start
+${CMD} --cpu <cpu> [ --file <file name> || --batch ] --end
+${CMD} --cpu <cpu> [ --file <file name> || --batch ] <command>
+
+Counts kernel ticks on a CPU (or set of CPUs), using ftrace log
+
+options:
+-h | --help   print this text
+-c | --cpu <cpu>  change CPUs to monitor (this option is mandatory)
+                  <cpu> can either be a CPU number or a cpuset name
+-s | --start  start tick counting
+-e | --end    stop counting and print result
+-f | --file <file name> save trace log
+-b | --batch  Do just print number of ticks, no descriptive text.
+You can use this tool in two ways. One way is to call it twice, first with
+--start option and then with --end option, it will count the ticks that occurred
+in between those two calls. The other way is to pass a command to the tool. The
+command will be executed during which tick will be counted.
+EOF
+    exit 0
+}
+
+# Prints an error message and exits
+# $1 = Error message
+# Depends on the following global variables:
+# CMD
+exit_msg () {
+    echo "${CMD}: $1" >&2
+    exit 1
+}
+
+# Used to check options that take an argument. It exits if the options is
+# missing, otherwise it returns the argument.
+# $1 = the option
+# $2 = next word in the scripts parameter list (possibly the options argument)
+#
+# Depends on the following global variables:
+# CMD
+#
+# Returns on stdio
+# the argument
+get_arg()
+{
+    if [ -z $2 ] || [[ $2 == -* ]]; then
+        exit_msg "Option $1 requires an argument"
+    fi
+    printf "%s" "$2"
+}
+
+# This function translates "-" as separator into bash standard whitespaces.
+# It adds sanity checks to the process, as well as supporting a single value
+# which is translated into <value> <value>.
+# NOTE: Current implementation only support a single range or value!
+#       If several ranges are needed, use get_range()!
+# $1 = range, either single value or <min>-<max>
+# $2 = prefix for error prints
+get_single_range () {
+    # Split range into an array, using "-" as separator
+    IFS='-' read -a range <<<"$1"
+
+    # Sanity check the array.
+    # Check that array is one or two elements in size
+    declare -ri nr_elements=${#range[@]}
+    (( nr_elements == 1 || nr_elements == 2 )) || exit_msg "$2: $1: Illegal range"
+
+    # Check that all array entries are integers
+    for entry in "${range[@]}"; do
+        [ ! -z "${entry##*[!0-9]*}" ] || exit_msg "$2: $entry: Not an integer"
+    done
+
+    (( nr_elements == 1 )) && range[1]=${range[0]}
+
+    # If only a single value was given, create a range with this value as both min and max
+    echo -n "${range[@]} "
+}
+
+# This function translates "-" as separator into bash standard whitespaces.
+# It adds sanity checks to the process, as well as supporting a single value
+# which is translated into <value> <value>.
+# NOTE: Current implementation only support a single range or value!
+# $1 = comma separated list of ranges, either single value or <min>-<max>
+# $2 = prefix for error prints
+get_range () {
+    declare -a range_list
+    local range
+
+    IFS=, read -a range_list <<<"$1"
+
+    for range in ${range_list[@]}; do
+        get_single_range "$range" "$2"
+    done
+}
+
+# Parameters:
+# $@ = comma separated list of ranges, either single value or <min>-<max>
+#
+# Returns on stdio:
+# Mask with bits set according to range
+range_to_mask () {
+    declare -a range=( $(get_range "$@" "Could not calculate CPU mask") )
+    declare -i mask=0
+
+    while true; do
+        [[ -z ${1:-} ]] && break
+        declare -i min="$1"
+        declare -i max="$2"
+        shift 2
+
+        (( mask |= (((1 << (max-min+1)) - 1) << min) )) #min
+    done
+
+    printf ${mask}
+}
+
+# This function translates "-" as separator into a bitmask.
+# $@ = comma separated list of ranges, either single value or <min>-<max>
+#
+# Returns on stdio:
+# Mask with bits set according to the range string
+get_mask_from_range () {
+    declare -a range=( $(get_range "$@" "Could not calculate CPU mask") )
+    declare -i mask=$(range_to_mask ${range[@]})
+    printf ${mask}
+}
+
+# Finds out the path to the cpuset files
+# Assumes that cpuset has been mounted
+# Depends on the following global variables:
+# DEFAULT_CPUSET_ROOT
+get_cpuset_root () {
+    local CPUSET_ROOT
+
+    grep -q -s cpuset /proc/filesystems || exit_msg "Kernel is lacking support for cpuset"
+
+    while read -a line; do
+        if [[ ${line[2]} == 'cgroup' ]]; then
+            CPUSET_ROOT="${line[1]}"
+        fi
+    done < /proc/mounts
+
+    [[ -z ${CPUSET_ROOT:-} ]] && exit_msg "cpuset has not been mountad."
+
+    echo "$CPUSET_ROOT"
+}
+
+# Check if there are a prefix on the cpuset file
+# Depends on the following global variables:
+# DEFAULT_CPUSET_PREFIX
+#
+# $1=cpuset root
+#
+# Returns on stdio
+# the prefix
+get_cpuset_prefix() {
+    if [ -e $1/cpus ]; then
+        echo ""
+    elif [ -e $1/${DEFAULT_CPUSET_PREFIX}cpus ]; then
+        echo $DEFAULT_CPUSET_PREFIX
+    else
+        exit_msg "Error: don't know what prefix to use"
+    fi
+}
+
+# Check if the parameter is an integer
+# $@ = value to check
+#
+# returns: true if the parameter is an integer
+is_int() {
+    return $(test "$@" -eq "$@" > /dev/null 2>&1);
+}
+
+# Configures ftrace
+# Depends on the following global variables:
+# TRACE_ROOT
+config_trace ()
+{
+    echo 0 > ${TRACE_ROOT}/tracing_on
+    # Clear log
+    echo > ${TRACE_ROOT}/trace
+    # Reset function filter
+    echo > ${TRACE_ROOT}/set_ftrace_filter
+    # Function called each tick
+    echo scheduler_tick > ${TRACE_ROOT}/set_ftrace_filter
+    # Only trace on the specified CPUs
+    printf "%x" $CPUMASK > ${TRACE_ROOT}/tracing_cpumask
+    echo function > ${TRACE_ROOT}/current_tracer
+}
+
+# Start ftrace tracing
+# Depends on the following global variables:
+# TRACE_ROOT
+start_tracing ()
+{
+    echo 1 > ${TRACE_ROOT}/tracing_on
+}
+
+# Executes the command passed to the script
+# Depends on the following global variables:
+# COMMAND
+run_command ()
+{
+    ${COMMAND}
+}
+
+# Stops ftrace tracing
+# Depends on the following global variables:
+# TRACE_ROOT
+stop_tracing ()
+{
+    echo 0 > ${TRACE_ROOT}/tracing_on
+}
+
+# Saves the ftrace log, if --file options was given.
+# Depends on the following global variables:
+# SAVEFILE, LOG, FILE
+save_log ()
+{
+    if ${SAVEFILE}; then
+        cp ${LOG} ${FILE}
+    fi
+}
+
+# Counts ticks and prints it to stdout
+# Depends on the following global variables:
+# LOG, BATCH
+analyse_log ()
+{
+    local ticks=$(grep scheduler_tick ${LOG} | wc -l)
+    if ${BATCH}; then
+        echo "${ticks}"
+    else
+        echo "${ticks} ticks occurred"
+    fi
+}
+
+[ -z ${1:-} ] && usage
+
+while [[ ${1:-} == -* ]]; do
+    case "$1" in
+        -h | --help ) HELP=true; shift ;;
+        -s | --start ) START=true; shift ;;
+        -e | --end ) END=true; shift ;;
+        -b | --batch ) BATCH=true; shift ;;
+        -c | --cpu ) CPU=$(get_arg $1 $2); shift 2 ;;
+        -f | --file ) FILE=$(get_arg $1 $2); SAVEFILE=true; shift 2 ;;
+        * ) exit_msg "Invalid option $1" ;;
+    esac
+done
+
+if $HELP; then
+    usage
+fi
+
+if [ -z ${CPU:-} ]; then
+    exit_msg "The --cpu option is mandatory"
+elif $(is_int ${CPU}); then
+    CPUMASK=$(get_mask_from_range ${CPU})
+else
+    CPUSET_ROOT=$(get_cpuset_root)
+    CPUSET_PREFIX=$(get_cpuset_prefix ${CPUSET_ROOT})
+    if [ -e "${CPUSET_ROOT}/${CPU}/${CPUSET_PREFIX}cpus" ]; then
+        CPUMASK=$(get_mask_from_range "$( <${CPUSET_ROOT}/${CPU}/${CPUSET_PREFIX}cpus )" )
+    else
+        exit_msg "Invalid argument to the --cpu (${CPU})"
+    fi
+fi
+
+if $START; then
+    $END && exit_msg "Do not use both --start and --end"
+    [[ -n "$*" ]] && exit_msg "No command (${*}) should be supplied"
+    config_trace
+    start_tracing
+elif $END; then
+    [[ -n "$*" ]] && exit_msg "No command (${*}) should be supplied"
+    stop_tracing
+    save_log
+    analyse_log
+else
+    [[ -z "$*" ]] && exit_msg "Missing command"
+    COMMAND="$*"
+
+    config_trace
+    start_tracing
+    run_command
+    stop_tracing
+    save_log
+    analyse_log
+fi
+
+exit 0
