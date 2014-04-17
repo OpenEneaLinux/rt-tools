@@ -95,23 +95,30 @@ class targetOptions:
             }[target]
 
         self.task_whitelist = {
-            "keystone-evm" : [],
-            "chiefriver" : [],
-            "p2041rdb" : ["deferwq"],
-            # FIXME: The crystalforest whitelist needs to be investigated
+            "keystone-evm" : ["nfsiod","crypto","21000400.spi","21000600.spi",
+                              "21000800.spi","kpsmoused", "deferwq", "khelper",
+                              "writeback", "bioset", "kblockd","rpciod"],
+            "chiefriver" : ["writeback", "bioset", "kblockd", "rpciod",
+                            "ata_sff", "deferwq", "netns", "md", "nfsiod",
+                            "crypto", "kpsmoused"
+                            ],
+            "p2041rdb" : ["deferwq", "cpuset", "khelper", "kblockd", "ata_sff",
+                          "rpciod","nfsiod", "crypto", "ffe110000.spi", "edac-poller"
+                          ],
             "crystalforest-server" : ["khelper", "netns", "writeback",
                                       "writeback", "bioset", "kblockd",
                                       "ata_sff", "md", "rpciod", "nfsiod",
                                       "crypto", "ext4-dio-unwrit",
-                                      "kvm-irqfd-clean"]
+                                      "kvm-irqfd-clean"
+                                      ]
 
             }[target]
 
         self.rt_mask = {
-            "keystone-evm" : 0xc,
-            "chiefriver" : 0xc,
-            "p2041rdb" : 0xc,
-            "crystalforest-server" : 0xaaaa
+            "keystone-evm" : 0xe,
+            "chiefriver" : 0xe,
+            "p2041rdb" : 0xe,
+            "crystalforest-server" : 0xaaaa # NUMA node 1
             }[target]
 
         # None, or node nr
