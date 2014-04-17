@@ -100,7 +100,7 @@ class targetOptions:
                               "writeback", "bioset", "kblockd","rpciod"],
             "chiefriver" : ["writeback", "bioset", "kblockd", "rpciod",
                             "ata_sff", "deferwq", "netns", "md", "nfsiod",
-                            "crypto", "kpsmoused"
+                            "crypto", "kpsmoused", "khelper"
                             ],
             "p2041rdb" : ["deferwq", "cpuset", "khelper", "kblockd", "ata_sff",
                           "rpciod","nfsiod", "crypto", "ffe110000.spi", "edac-poller"
