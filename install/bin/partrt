@@ -43,7 +43,7 @@ partrt [options] <cmd>
 partrt [options] create [cmd-options] <cpumask>
 partrt [options] undo [cmd-options]
 partrt [options] run [cmd-options] <partition> <command>
-partrt [options] move <pid> <partition>
+partrt [options] move [cmd-options] <pid> <partition>
 
 The purpose of partrt is to administrate CPU partitions/domains with different
 requirements on OS jitter and real-time performance. partrt requires that the
@@ -81,8 +81,8 @@ If <cmd> is create:
 
         The old environment will be saved in /tmp/partrt_env
 
-        <cpumask>:   Mandatory cpumask that specifies CPUs for the real time
-                     partition
+        <cpumask>:   Mandatory hexadecimal cpumask that specifies CPUs for the
+                     real time partition.
 
         cmd-options:
 
@@ -100,7 +100,6 @@ If <cmd> is create:
         -m           Do not delay vmstat housekeeping when creating a
                      new partition
 
-
         -r           Do not restart hotplug CPUs when creating a new
                      partition
 
@@ -116,6 +115,8 @@ If <cmd> is undo:
         cpuset and change the IRQ affinities to include all CPUs.
 
         cmd-options:
+
+        -h           Show this help text and exit.
 
         -s file      File containing environment configuration to be
                      loaded. The configuration file is normally
@@ -133,11 +134,12 @@ If <cmd> is run:
 
         cmd-options:
 
-        -b           Use SCHED_BATCH
+        -c <cpumask>  Run task on hexadecimal <cpumask>. <cpumask> should
+                      include a subset of the CPUs of the selected partition.
 
         -f <prio>    Use SCHED_FIFO with RT priority <prio>
 
-        -i           Use SCHED_IDLE
+        -h           Show this help text and exit.
 
         -o           Use SCHED_OTHER
 
@@ -145,18 +147,27 @@ If <cmd> is run:
 
 If <cmd> is move:
 
-        Move the task with ID PID/TID into <partition>
+        Changes the affinity of task <pid> to <cpumask>. Will automatically put
+        the task in the correct partition. The command will fail if <cpumask>
+        intersects with multiple partitions.
 
         <pid>: PID of task to be moved
 
-        <partition>: Name of the partition that the task should be moved to.
+        <partition>: Name of the partition that the task should be moved to
+
+        cmd-options:
+
+        -c <cpumask>  Run task on hexadecimal <cpumask>. <cpumask> should
+                      include a subset of the CPUs of the selected partition.
+
+        -h           Show this help text and exit.
 
 Example:
-        Create RT partition on CPU 3:
-        > partrt create 8
+        Create RT partition on CPU 2 and 3:
+        > partrt create 0xc
 
-        Run cyclictest in the RT partition:
-        > partrt run rt cyclictest -n -i 10000 -l 10000
+        Run cyclictest on CPU 3 in the RT partition:
+        > partrt run -c 0x8 rt cyclictest -n -i 10000 -l 10000
 
         Move cyclictest to NRT partition:
         > partrt move "pid of cyclictest" nrt
@@ -442,14 +453,18 @@ create () {
             r) restart_hotplug=false;;
             t) disable_throttle=false;;
             w) disable_watchdog=false;;
-            \?) exit_msg "Invalid option: ${OPTARG} " ;;
+            \?) exit_msg "Invalid option: -${OPTARG} " ;;
             :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument"
         esac
     done
 
     shift $(( ${OPTIND} - 1 ))
     [ -z ${1:-} ] && exit_msg "Missing mandatory cpumask"
-    rt_mask=$1;
+    if [[ $1 == "0x"* || $1 == "0X"* ]] ; then
+        rt_mask=$1;
+    else
+        rt_mask=$(( 16#$1 ))
+    fi
 
     [[ ! $rt_mask =~ $re || $rt_mask -le 0 || $rt_mask -gt $available_cpu_mask ]] && exit_msg "Illegal CPU mask: $rt_mask"
 
@@ -639,7 +654,7 @@ undo () {
     while getopts ":hs:" o; do
         case "${o}" in
             h) usage; exit 0 ;;
-            s) settings_file=${OPTARG}; shift 2 ;;
+            s) settings_file=${OPTARG};;
             \?) exit_msg "Invalid option: ${OPTARG} " ;;
             :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument"
         esac
@@ -694,7 +709,6 @@ undo () {
     echo "System was successfully restored"
 }
 
-
 #################
 # Run sub-command
 #################
@@ -705,16 +719,21 @@ run () {
     declare -i prio=0
     declare re='^[0-9]+$'
     declare partition=""
+    declare cpumask=""
+    declare rt_mask=""
 
-    while getopts ":bf:hior:" o; do
+    while getopts ":c:f:hor:" o; do
         case "${o}" in
-            f|r) sched_policy="-${o}"; prio=${OPTARG}; shift 2 ;;
+            f|r) sched_policy="${o}"; prio=${OPTARG} ;;
+            c) cpumask=${OPTARG} ;;
             h) usage; exit 0 ;;
-            b|i|o) sched_policy="-${o}"; shift ;;
+            o) sched_policy="${o}";;
             \?) exit_msg "Invalid option: ${OPTARG} " ;;
             :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument" ;;
         esac
     done
+
+    shift $(( ${OPTIND} - 1 ))
 
     [ -z ${1:-} ] && exit_msg "Missing mandatory partition name"
     partition=$1; shift;
@@ -725,11 +744,29 @@ run () {
 
     write_to_file $CPUSET_ROOT/$partition/tasks $$
 
+    if [[ $cpumask == "0x"* || $cpumask == "0X"* ]] ; then
+        cpumask=$(( $cpumask ))
+    else
+        cpumask=$(( 16#$cpumask ))
+    fi
+
+    rt_mask=( $(grep Cpus_allowed "/proc/$$/status") )
+    rt_mask=$(( 16#${rt_mask[1]} ))
+
+    if [ $cpumask -ne 0 ]; then
+        if [[ $(( $cpumask & $rt_mask )) -eq $cpumask ]]; then
+            taskset -p $(printf "0x%x" "$cpumask") "$$" 2>&1 > /dev/null
+        else
+            exit_msg "Invalid cpumask: $cpumask"
+        fi
+    fi
+
     if [[ -z $sched_policy ]]; then
         exec "$@"
     else
-        [[ ! $prio =~ $re || $prio -le 0 || $prio -gt 99 ]] && exit_msg "Illegal priority: $prio"
-        exec chrt $sched_policy $prio "$@"
+        [[ "f r" == *$sched_policy* ]] && [[ ! $prio =~ $re || $prio -le 0 || $prio -gt 99 ]] && exit_msg "Illegal priority: $prio"
+
+        exec chrt "-$sched_policy" $prio "$@"
     fi
 }
 
@@ -740,14 +777,19 @@ run () {
 
 move () {
     CPUSET_ROOT=$(get_cpuset_root)
+    declare cpumask=""
+    declare rt_mask=""
 
-    while getopts ":h" o; do
+    while getopts ":c:h" o; do
         case "${o}" in
+            c) cpumask=${OPTARG} ;;
             h) usage; exit 0 ;;
             \?) exit_msg "Invalid option: ${OPTARG} " ;;
             :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument"
         esac
     done
+
+    shift $(( ${OPTIND} - 1 ))
 
     [ -z ${1:-} ] && exit_msg "Missing mandatory task ID"
     declare pid=$1; shift;
@@ -758,6 +800,23 @@ move () {
     [ -a $CPUSET_ROOT/$partition ] || exit_msg "Partition $partition does not exist"
 
     move_task $pid $partition
+
+    if [[ $cpumask == "0x"* || $cpumask == "0X"* ]] ; then
+        cpumask=$(( $cpumask ))
+    else
+        cpumask=$(( 16#$cpumask ))
+    fi
+
+    rt_mask=( $(grep Cpus_allowed "/proc/$pid/status") )
+    rt_mask=$(( 16#${rt_mask[1]} ))
+
+    if [ $cpumask -ne 0 ]; then
+        if [[ $(( $cpumask & $rt_mask )) -eq $cpumask ]]; then
+            taskset -p $(printf "0x%x" "$cpumask") "$pid" 2>&1 > /dev/null
+        else
+            exit_msg "Invalid cpumask: $cpumask"
+        fi
+    fi
 }
 
 ######
