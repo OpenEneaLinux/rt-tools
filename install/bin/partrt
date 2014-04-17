@@ -566,7 +566,7 @@ create () {
     # Move block device writeback workqueues
     ########################################
     if [ "$migrate_bwq" = true ]; then
-        log_prev_and_apply /sys/bus/workqueue/devices/writeback/cpumask $(printf "%x" $rt_mask)
+        log_prev_and_apply /sys/bus/workqueue/devices/writeback/cpumask $(printf "%x" $nrt_mask)
     fi
 
     # Disable machine check (Writing 0 to machinecheck0/check_interval will

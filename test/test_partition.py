@@ -939,7 +939,8 @@ def part_tc_9_check_env():
         stat_interval = 1000
         numa_affinity = 0
         watchdog = 0
-        cpumask = options.get_rt_mask()
+        cpumask = (~options.get_rt_mask() &
+                    (2 ** multiprocessing.cpu_count() - 1))
         check_interval = 0
 
         return check_env(sched_rt_runtime_us, sched_tick_max_deferment,
