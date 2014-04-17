@@ -27,7 +27,7 @@
 
 version () {
     cat <<EOF
-partrt 1.0
+partrt 1.1
 
 Copyright (C) 2013,2014 by Enea Software AB.
 
