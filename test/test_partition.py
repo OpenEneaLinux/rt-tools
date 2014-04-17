@@ -52,7 +52,8 @@ FAIL = 1
 SUPPORTED_TARGETS = [
     "keystone-evm",
     "chiefriver",
-    "p2041rdb"
+    "p2041rdb",
+    "crystalforest-server"
     ]
 
 # Every new test target has to be added here and its irq_whitelist and
@@ -87,17 +88,38 @@ class targetOptions:
                           508, # ipi reschedule
                           509, # ipi call function single
                           510 # ipi debugger
-                          ]
+                          ],
+            "crystalforest-server" : [0, # per CPU timer
+                            2  # Not registered
+                            ]
             }[target]
+
         self.task_whitelist = {
             "keystone-evm" : [],
             "chiefriver" : [],
-            "p2041rdb" : ["deferwq"]
+            "p2041rdb" : ["deferwq"],
+            # FIXME: The crystalforest whitelist needs to be investigated
+            "crystalforest-server" : ["khelper", "netns", "writeback",
+                                      "writeback", "bioset", "kblockd",
+                                      "ata_sff", "md", "rpciod", "nfsiod",
+                                      "crypto", "ext4-dio-unwrit",
+                                      "kvm-irqfd-clean"]
+
             }[target]
+
         self.rt_mask = {
             "keystone-evm" : 0xc,
             "chiefriver" : 0xc,
-            "p2041rdb" : 0xc
+            "p2041rdb" : 0xc,
+            "crystalforest-server" : 0xaaaa
+            }[target]
+
+        # None, or node nr
+        self.numa = {
+            "keystone-evm" : None,
+            "chiefriver" :None,
+            "p2041rdb" : None,
+            "crystalforest-server" : 1
             }[target]
 
     def get_irq_whitelist(self):
@@ -105,9 +127,6 @@ class targetOptions:
 
     def get_task_whitelist(self):
         return self.task_whitelist + self.common_task_whitelist
-
-    def get_rt_mask(self):
-        return self.rt_mask
 
 # Test globals
 global verbose
@@ -168,15 +187,20 @@ def get_cpusets():
 
 # Check if bad parameter is detected
 def bad_parameter(cmd, tc_name):
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                         stderr=subprocess.PIPE, shell=True)
-    (stdout, stderr) = p.communicate()
-    if p.returncode == 0:
-        print_msg(tc_name + ": Failed: " + cmd +
-                  ": incorrectly returned normal")
+    try:
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, shell=True)
+        (stdout, stderr) = p.communicate()
+        if p.returncode == 0:
+            print_msg(tc_name + ": Failed: " + cmd +
+                      ": incorrectly returned normal")
+            return FAIL
+        else:
+            return SUCCESS
+    except:
+        print_msg ("bad_parameter: Failed because of exception: " +
+                   str(sys.exc_info()[1]))
         return FAIL
-    else:
-        return SUCCESS
 
 # Get process affinity. Returns task_name, CPU mask and last_cpu
 def get_task_info(pid):
@@ -377,7 +401,11 @@ def check_cpuset_cleanup(rt_partition, nrt_partition):
 # Leaves system in a partitioned state.
 def part_tc_1_1_prepare():
     try:
-        cmd = ("partrt create " + hex(options.get_rt_mask()))
+        if options.numa is not None:
+            cmd = ("partrt create -n " + str(options.numa))
+        else:
+            cmd = ("partrt create " + hex(options.rt_mask))
+
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, shell=True)
 
@@ -389,7 +417,7 @@ def part_tc_1_1_prepare():
                       str(p.returncode))
             return FAIL
 
-        rt_mask = options.get_rt_mask()
+        rt_mask = options.rt_mask
         nrt_mask = ~rt_mask & (2 ** multiprocessing.cpu_count() - 1)
 
         for line in stdout.splitlines():
@@ -433,7 +461,7 @@ def part_tc_1_2_prepare():
         for line in stdout.splitlines():
             if "Name:rt" in line:
                 real_mask = liststr2mask(line.split(":")[2])
-                rt_mask = options.get_rt_mask()
+                rt_mask = options.rt_mask
                 if real_mask != rt_mask:
                     print_msg("part_tc_1_2 Failed: rt partition has CPU mask " +
                               hex(real_mask) + " expected: " + hex (rt_mask))
@@ -443,7 +471,7 @@ def part_tc_1_2_prepare():
 
             if "Name:nrt" in line:
                 real_mask = liststr2mask(line.split(":")[2])
-                nrt_mask = (~options.get_rt_mask() &
+                nrt_mask = (~options.rt_mask &
                              (2 ** multiprocessing.cpu_count() - 1))
                 if real_mask != nrt_mask:
                     print_msg("part_tc_1_2 Failed: nrt partition has CPU mask "
@@ -470,7 +498,7 @@ def part_tc_2_1_irq_affinity():
         with open("/proc/irq/default_smp_affinity") as f:
             default_affinity = int(f.readline(), base=16)
 
-        rt_mask = options.get_rt_mask()
+        rt_mask = options.rt_mask
         nrt_mask = ~rt_mask & (2 ** multiprocessing.cpu_count() - 1)
 
         if (default_affinity != nrt_mask):
@@ -490,7 +518,7 @@ def part_tc_2_1_irq_affinity():
 # mask.
 def part_tc_2_2_irq_affinity():
     try:
-        rt_mask = options.get_rt_mask()
+        rt_mask = options.rt_mask
 
         for irqvector in os.listdir("/proc/irq/"):
             if os.path.isdir("/proc/irq/" + irqvector):
@@ -595,7 +623,7 @@ def part_tc_3_2_proc_affinity():
 def part_tc_3_3_proc_affinity():
     global options
     try:
-        rt_mask = options.get_rt_mask()
+        rt_mask = options.rt_mask
         nrt_mask = ~rt_mask & (2 ** multiprocessing.cpu_count() - 1)
 
         cpuset_dir, cpuset_prefix = get_cpusets()
@@ -609,7 +637,8 @@ def part_tc_3_3_proc_affinity():
         with open(tasks_path) as f:
             for line in f.readlines():
                 pid = int(line)
-                (task_name, affinity, last_cpu, policy, prio) = get_task_info(pid)
+                (task_name, affinity, last_cpu,
+                 policy, prio) = get_task_info(pid)
 
                 found = None
 
@@ -636,7 +665,7 @@ def part_tc_3_3_proc_affinity():
 # RT partition.
 def part_tc_4_1_run():
     try:
-        rt_mask = options.get_rt_mask()
+        rt_mask = options.rt_mask
 
         cmd = "partrt run -f 60 rt watch ls"
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
@@ -644,6 +673,12 @@ def part_tc_4_1_run():
                              preexec_fn=os.setsid)
 
         time.sleep(1)
+
+        returncode = p.poll()
+        if returncode is not None:
+            print ("part_tc_4_1: " + cmd + " unexpectedly returned with code: "
+                   + str(p.returncode))
+            return FAIL
 
         (task_name, affinity, last_cpu, policy, prio) = get_task_info(p.pid)
 
@@ -667,8 +702,6 @@ def part_tc_4_1_run():
                       " has wrong priority: " + str(prio))
             return FAIL
 
-        os.killpg(p.pid, signal.SIGTERM)
-
         return SUCCESS
 
     except:
@@ -676,20 +709,31 @@ def part_tc_4_1_run():
                   str(sys.exc_info()[1]))
         return FAIL
 
+    finally:
+        if p is not None and p.poll() is None:
+            os.killpg(p.pid, signal.SIGTERM)
+
 # PART_TC_4_2
 # Test the partrt run nrt command. Check that command is executed in correct
 # NRT partition.
 def part_tc_4_2_run():
+    p = None
     try:
-       rt_mask = options.get_rt_mask()
+       rt_mask = options.rt_mask
        nrt_mask = ~rt_mask & (2 ** multiprocessing.cpu_count() - 1)
 
-       cmd = "exec partrt run nrt watch ls"
+       cmd = "partrt run nrt watch ls"
        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, shell=True,
                              preexec_fn=os.setsid)
 
        time.sleep(1)
+
+       returncode = p.poll()
+       if returncode is not None:
+           print ("part_tc_4_2: " + cmd + " unexpectedly returned with code: "
+                  + str(returncode))
+           return FAIL
 
        (task_name, affinity, last_cpu, policy, prio) = get_task_info(p.pid)
 
@@ -711,8 +755,6 @@ def part_tc_4_2_run():
                      str(prio))
            return FAIL
 
-       os.killpg(p.pid, signal.SIGTERM)
-
        return SUCCESS
 
     except:
@@ -720,11 +762,16 @@ def part_tc_4_2_run():
                   str(sys.exc_info()[1]))
         return FAIL
 
+    finally:
+        if p is not None and p.poll() is None:
+            os.killpg(p.pid, signal.SIGTERM)
+
 # PART_TC_4_3
 # Test the -c flag of the run subcommand
 def part_tc_4_3_run():
+    p = None
     try:
-        rt_mask = options.get_rt_mask()
+        rt_mask = options.rt_mask
 
         bit = 0
         while (rt_mask & (0x1 << bit)) == 0:
@@ -739,6 +786,12 @@ def part_tc_4_3_run():
 
         time.sleep(1)
 
+        returncode = p.poll()
+        if returncode is not None:
+            print ("part_tc_4_3: " + cmd + " unexpectedly returned with code: "
+                   + str(p.returncode))
+            return FAIL
+
         (task_name, affinity, last_cpu, policy, prio) = get_task_info(p.pid)
 
         if affinity != cpu:
@@ -747,14 +800,16 @@ def part_tc_4_3_run():
                       hex(cpu))
             return FAIL
 
-        os.killpg(p.pid, signal.SIGTERM)
-
         return SUCCESS
 
     except:
         print_msg("part_tc_4_3 Failed because of exception: " +
                   str(sys.exc_info()[1]))
         return FAIL
+
+    finally:
+        if p is not None and p.poll() is None:
+            os.killpg(p.pid, signal.SIGTERM)
 
 # PART_TC_5
 # Check that the tick has been disabled
@@ -794,6 +849,8 @@ def part_tc_6_rt_throttle():
 # PART_TC_7
 # Test bad parameters on partiotitioned system
 def part_tc_7_bad_parameters():
+    p = None
+
     try:
         part_tc_name = "part_tc_7"
 
@@ -849,10 +906,10 @@ def part_tc_7_bad_parameters():
                              preexec_fn=os.setsid)
 
         cmd = "partrt move " + str(p.pid) + " asdf"
+
         if bad_parameter(cmd, part_tc_name):
             return FAIL
 
-        os.killpg(p.pid, signal.SIGTERM)
         #################################
 
         cmd = "partrt mov asdf rt"
@@ -866,12 +923,18 @@ def part_tc_7_bad_parameters():
                   str(sys.exc_info()[1]))
         return FAIL
 
+    finally:
+        if p is not None and p.poll() is None:
+            os.killpg(p.pid, signal.SIGTERM)
+
 # PART_TC_8
 # Test that it is possible to move a process into the RT partition
 # and that the process gets correct affinity
 def part_tc_8_mov():
+    p1 = None
+
     try:
-        rt_mask = options.get_rt_mask()
+        rt_mask = options.rt_mask
         nrt_mask = ~rt_mask & (2 ** multiprocessing.cpu_count() - 1)
 
         cmd = "while true; do sleep .1; done"
@@ -880,6 +943,12 @@ def part_tc_8_mov():
                              preexec_fn=os.setsid)
 
         time.sleep(1)
+
+        returncode = p1.poll()
+        if returncode is not None:
+            print ("part_tc_8: " + cmd + " unexpectedly returned with code: "
+                   + str(returncode))
+            return FAIL
 
         # Check that the process executes within the NRT partition
         (task_name, affinity, last_cpu, policy, prio) = get_task_info(p1.pid)
@@ -902,11 +971,18 @@ def part_tc_8_mov():
         cpu = 2 ** bit
 
         cmd = ("partrt move -c " + hex(cpu) + " " + str(p1.pid) + " rt")
+
         p2 = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, shell=True,
                               preexec_fn=os.setsid)
 
         p2.wait()
+
+        if p2.returncode != 0:
+            print ("part_tc_8: " + cmd + "Returned with abnormal code: "
+                   + str(p2.returncode))
+            return FAIL
+
         time.sleep(1)
 
         # Check that the process executes within the RT partition
@@ -922,14 +998,16 @@ def part_tc_8_mov():
                       + str(last_cpu))
             return FAIL
 
-        os.killpg(p1.pid, signal.SIGTERM)
-
         return SUCCESS
 
     except:
         print_msg("part_tc_8 Failed because of exception: " +
                   str(sys.exc_info()[1]))
         return FAIL
+
+    finally:
+        if p1 is not None and p1.poll() is None:
+            os.killpg(p1.pid, signal.SIGTERM)
 
 # PART_TC_9 Check that the environment has been changed
 def part_tc_9_check_env():
@@ -939,7 +1017,7 @@ def part_tc_9_check_env():
         stat_interval = 1000
         numa_affinity = 0
         watchdog = 0
-        cpumask = (~options.get_rt_mask() &
+        cpumask = (~options.rt_mask &
                     (2 ** multiprocessing.cpu_count() - 1))
         check_interval = 0
 
@@ -995,7 +1073,7 @@ def nopart_tc_1_1_cleanup():
          numa_affinity, watchdog, check_interval) = get_env()
 
         # Create partitions
-        cmd = ("partrt create " + hex(options.get_rt_mask()))
+        cmd = ("partrt create " + hex(options.rt_mask))
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, shell=True,
                              preexec_fn=os.setsid)
@@ -1047,8 +1125,8 @@ def nopart_tc_1_2_cleanup():
          numa_affinity, watchdog, check_interval) = get_env()
 
         # Create partitions
-        cmd = ("partrt -r rt1 -n nrt1 create -b -c -d -m -n -r -t -w " +
-               hex(options.get_rt_mask()))
+        cmd = ("partrt -r rt1 -n nrt1 create -a -b -c -d -m -r -t -w " +
+               hex(options.rt_mask))
 
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, shell=True,
@@ -1116,7 +1194,7 @@ def nopart_tc_2_1_help_text():
             print_msg(stdout + stderr)
             print_msg(
                 "nopart_tc_2: Failed: partrt returned with abnormal code: ",
-                p.returncode)
+                str(p.returncode))
             return FAIL
 
         found_usage = False
@@ -1199,7 +1277,8 @@ def nopart_tc_3_bad_parameters():
         if bad_parameter(cmd, nopart_tc_name):
             return FAIL
 
-        cmd = "partrt create 1234"
+        # This has to be updated for really large systems
+        cmd = "partrt create fffffffffffffffffffffffffffffff"
         if bad_parameter(cmd, nopart_tc_name):
             return FAIL
 

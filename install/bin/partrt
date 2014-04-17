@@ -40,7 +40,7 @@ partrt - Create real time CPU partitions on SMP Linux
 
 Usage:
 partrt [options] <cmd>
-partrt [options] create [cmd-options] <cpumask>
+partrt [options] create [cmd-options] [cpumask]
 partrt [options] undo [cmd-options]
 partrt [options] run [cmd-options] <partition> <command>
 partrt [options] move [cmd-options] <pid> <partition>
@@ -82,10 +82,12 @@ If <cmd> is create:
 
         The old environment will be saved in /tmp/partrt_env
 
-        <cpumask>:   Mandatory hexadecimal cpumask that specifies CPUs for the
-                     real time partition.
+        [cpumask]:   cpumask that specifies CPUs for the real time partition.
+                     Not needed if the -n flag is passed.
 
         cmd-options:
+
+        -a           Disable writeback workqueue NUMA affinity
 
         -b           Do not migrate block workqueue when creating a new
                      partition
@@ -96,7 +98,10 @@ If <cmd> is create:
 
         -h           Show this help text and exit.
 
-        -n           Disable writeback NUMA affinity
+        -n <node>    Use NUMA topology to configure the partitions. The CPUs
+                     and memory that belong to NUMA <node> will be exclusive
+                     to the RT partition. This flag omits the [cpumask]
+                     parameter.
 
         -m           Do not delay vmstat housekeeping when creating a
                      new partition
@@ -246,8 +251,8 @@ write_to_file () {
     declare val=$2
 
     if [ -a $file ]; then
-        ( echo $val > $file ) || exit_msg "Failed to write $val into $file"
-        verbose_printf "$val > $file"
+        echo $val > $file || exit_msg "Failed to write $val into $file"
+        verbose_printf "echo $val > $file"
     else
         verbose_printf "$file: Does not exist"
     fi
@@ -421,6 +426,86 @@ mask_to_list () {
     printf $new_list
 }
 
+########################################
+# Functions for converting lists to mask
+########################################
+
+# This function translates "-" as separator into bash standard whitespaces.
+# It adds sanity checks to the process, as well as supporting a single value
+# which is translated into <value> <value>.
+# NOTE: Current implementation only support a single range or value!
+#       If several ranges are needed, use get_range()!
+# $1 = range, either single value or <min>-<max>
+# $2 = prefix for error prints
+get_single_range () {
+    # Split range into an array, using "-" as separator
+    IFS='-' read -a range <<<"$1"
+
+    # Sanity check the array.
+    # Check that array is one or two elements in size
+    declare -ri nr_elements=${#range[@]}
+    (( nr_elements == 1 || nr_elements == 2 )) || exit_msg "$2: $1: Illegal range"
+
+    # Check that all array entries are integers
+    for entry in "${range[@]}"; do
+        [ ! -z "${entry##*[!0-9]*}" ] || exit_msg "$2: $entry: Not an integer"
+    done
+
+    (( nr_elements == 1 )) && range[1]=${range[0]}
+
+    # If only a single value was given, create a range with this value as both min and max
+    echo -n "${range[@]} "
+}
+
+# This function translates "-" as separator into bash standard whitespaces.
+# It adds sanity checks to the process, as well as supporting a single value
+# which is translated into <value> <value>.
+# NOTE: Current implementation only support a single range or value!
+# $1 = comma separated list of ranges, either single value or <min>-<max>
+# $2 = prefix for error prints
+get_range () {
+    declare -a range_list
+    local range
+
+    IFS=, read -a range_list <<<"$1"
+
+    for range in ${range_list[@]}; do
+        get_single_range "$range" "$2"
+    done
+}
+
+# Parameters:
+# $@ = comma separated list of ranges, either single value or <min>-<max>
+#
+# Returns on stdio:
+# Mask with bits set according to range
+range_to_mask () {
+    declare -a range=( $(get_range "$@" "Could not calculate CPU mask") )
+    declare -i mask=0
+
+    while true; do
+        [[ -z ${1:-} ]] && break
+        declare -i min="$1"
+        declare -i max="$2"
+        shift 2
+
+        (( mask |= (((1 << (max-min+1)) - 1) << min) )) #min
+    done
+
+    printf ${mask}
+}
+
+# This function translates "-" as separator into a bitmask.
+# $@ = comma separated list of ranges, either single value or <min>-<max>
+#
+# Returns on stdio:
+# Mask with bits set according to the range string
+get_mask_from_range () {
+    declare -a range=( $(get_range "$@" "Could not calculate CPU mask") )
+    declare -i mask=$(range_to_mask ${range[@]})
+    printf ${mask}
+}
+
 #######################
 # Partition sub-command
 #######################
@@ -443,32 +528,43 @@ create () {
     declare defer_ticks=true
     declare delay_vmtimers=true
     declare disable_numa_affinity=true
+    declare numa_partition=false
     declare restart_hotplug=true
     declare disable_throttle=true
     declare disable_watchdog=true
+    declare numa_node=0
 
-    while getopts ":bcdhmnrtw" o; do
+    while getopts ":abcdhmn:rtw" o; do
         case "${o}" in
+            a) disable_numa_affinity=false;;
             b) migrate_bwq=false;;
             c) disable_machine_check=false;;
             d) defer_ticks=false;;
-            h) usage; exit 0 ;;
+            h) usage; exit 0;;
             m) delay_vmtimers=false;;
-            n) disable_numa_affinity=false;;
+            n) numa_partition=true; numa_node=${OPTARG};;
             r) restart_hotplug=false;;
             t) disable_throttle=false;;
             w) disable_watchdog=false;;
-            \?) exit_msg "Invalid option: -${OPTARG} " ;;
-            :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument"
+            \?) exit_msg "Invalid option: -${OPTARG} ";;
+            :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument";;
         esac
     done
 
     shift $(( ${OPTIND} - 1 ))
-    [ -z ${1:-} ] && exit_msg "Missing mandatory cpumask"
-    if [[ $1 == "0x"* || $1 == "0X"* ]] ; then
-        rt_mask=$1;
+    if [ "$numa_partition" = false ]; then
+        [ -z ${1:-} ] && exit_msg "Missing mandatory cpumask"
+        if [[ $1 == "0x"* || $1 == "0X"* ]] ; then
+            rt_mask=$1;
+        else
+            rt_mask=$(( 16#$1 ))
+        fi
     else
-        rt_mask=$(( 16#$1 ))
+        if [ -d /sys/devices/system/node/node$numa_node ]; then
+            rt_mask=$(( 16#$(cat /sys/devices/system/node/node$numa_node/cpumap) ))
+        else
+            exit_msg "NUMA node: $numa_node does not exist"
+        fi
     fi
 
     [[ ! $rt_mask =~ $re || $rt_mask -le 0 || $rt_mask -gt $available_cpu_mask ]] && exit_msg "Illegal CPU mask: $rt_mask"
@@ -479,7 +575,7 @@ create () {
 
     # Check if there are present partitions
     #######################################
-   [ -n "$(find $CPUSET_ROOT/* -type d)" ] && exit_msg "There are allready cpusests/partitions on the system."
+    [ -n "$(find $CPUSET_ROOT/* -type d)" ] && exit_msg "There are allready cpusests/partitions on the system."
 
     # Create RT partition
     #####################
@@ -493,8 +589,15 @@ create () {
     # Make sure RT partition is alone on these CPUs
     write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}cpu_exclusive 1
 
-    # No particular requirements on memory handling
-    write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mems 0
+    # NUMA partitioning
+    ###################
+    if [ "$numa_partition" = true ]; then
+        write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mems $numa_node
+        write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mem_exclusive 1
+    else
+        # No particular requirements on memory handling
+        write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mems 0
+    fi
 
     # Create NRT partition
     #######################
@@ -502,8 +605,15 @@ create () {
         mkdir $CPUSET_ROOT/$nrt_partition
     fi
 
-    # No particular requirements on memory handling
-    write_to_file $CPUSET_ROOT/$nrt_partition/${CPUSET_PREFIX}mems 0
+    # NUMA partitioning
+    ###################
+    if [ "$numa_partition" = true ]; then
+        nrt_nodes=$(( $(get_mask_from_range $(cat /sys/devices/system/node/possible)) & ~$(get_mask_from_range $numa_node) ))
+        write_to_file $CPUSET_ROOT/$nrt_partition/${CPUSET_PREFIX}mems $(mask_to_list $nrt_nodes)
+    else
+        # No particular requirements on memory handling
+        write_to_file $CPUSET_ROOT/$nrt_partition/${CPUSET_PREFIX}mems 0
+    fi
 
     # Allocate CPUs
     write_to_file $CPUSET_ROOT/$nrt_partition/${CPUSET_PREFIX}cpus $nonisolated_cpu_list
@@ -530,7 +640,7 @@ create () {
     # Create new sttings file or overwrite the old one
     echo "partrt_settings: $datestr" > $PARTRT_SETTINGS_FILE
 
-    # Disable real time throtteling
+    # Disable real time throttling
     ###############################
     if [ "$disable_throttle" = true ]; then
         log_prev_and_apply /proc/sys/kernel/sched_rt_runtime_us -1
@@ -589,17 +699,22 @@ create () {
 
         # Create the RT partition again
         ###############################
-
         #Allocate CPUs
         write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}cpus $isolated_cpu_list
-
         # Make sure RT partition is alone on these CPUs
         write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}cpu_exclusive 1
+        # Disable load balancing in RT partition
+        write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}sched_load_balance 0
 
-        # No particular requirements on memory handling
-        write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mems 0
+        # NUMA partitioning
+        ###################
+        if [ "$numa_partition" = true ]; then
+            write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mems $numa_node
+            write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mem_exclusive 1
+        else
+            write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mems 0
+        fi
     fi
-
 
     echo "System was successfylly divided into following partitions:"
     echo "Isolated CPUs ($rt_partition):$isolated_cpu_list"
@@ -762,7 +877,7 @@ run () {
         if [[ $(( $cpumask & $rt_mask )) -eq $cpumask ]]; then
             taskset -p $(printf "0x%x" "$cpumask") "$$" 2>&1 > /dev/null
         else
-            exit_msg "Invalid cpumask: $cpumask contains CPUs that is not part of $partition"
+            exit_msg "Invalid cpumask: $cpumask contains one or more CPUs that are not part of $partition"
         fi
     fi
 
@@ -819,7 +934,7 @@ move () {
         if [[ $(( $cpumask & $rt_mask )) -eq $cpumask ]]; then
             taskset -p $(printf "0x%x" "$cpumask") "$pid" 2>&1 > /dev/null
         else
-            exit_msg "Invalid cpumask: $cpumask contains CPUs that is not part of $partition"
+            exit_msg "Invalid cpumask: $cpumask contains one or more CPUs that are not part of $partition"
         fi
     fi
 }
