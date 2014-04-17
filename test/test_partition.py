@@ -92,12 +92,12 @@ class targetOptions:
         self.task_whitelist = {
             "keystone-evm" : [],
             "chiefriver" : [],
-            "p2041rdb" : []
+            "p2041rdb" : ["deferwq"]
             }[target]
         self.rt_mask = {
-            "keystone-evm" : 8,
-            "chiefriver" : 8,
-            "p2041rdb" : 8
+            "keystone-evm" : 0xc,
+            "chiefriver" : 0xc,
+            "p2041rdb" : 0xc
             }[target]
 
     def get_irq_whitelist(self):
@@ -377,7 +377,7 @@ def check_cpuset_cleanup(rt_partition, nrt_partition):
 # Leaves system in a partitioned state.
 def part_tc_1_prepare():
     try:
-        cmd = ("partrt create " + str(options.get_rt_mask()))
+        cmd = ("partrt create " + hex(options.get_rt_mask()))
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, shell=True)
 
@@ -583,7 +583,7 @@ def part_tc_3_3_proc_affinity():
 # PART_TC_4_1
 # Test the partrt run rt command. Check that command is executed in correct
 # RT partition.
-def part_tc_4_1_run_rt():
+def part_tc_4_1_run():
     try:
         rt_mask = options.get_rt_mask()
 
@@ -628,7 +628,7 @@ def part_tc_4_1_run_rt():
 # PART_TC_4_2
 # Test the partrt run nrt command. Check that command is executed in correct
 # NRT partition.
-def part_tc_4_2_run_nrt():
+def part_tc_4_2_run():
     try:
        rt_mask = options.get_rt_mask()
        nrt_mask = ~rt_mask & (2 ** multiprocessing.cpu_count() - 1)
@@ -666,6 +666,42 @@ def part_tc_4_2_run_nrt():
 
     except:
         print_msg("part_tc_4_2 Failed because of exception: " +
+                  str(sys.exc_info()[1]))
+        return FAIL
+
+# PART_TC_4_3
+# Test the -c flag of the run subcommand
+def part_tc_4_3_run():
+    try:
+        rt_mask = options.get_rt_mask()
+
+        bit = 0
+        while (rt_mask & (0x1 << bit)) == 0:
+            bit = bit + 1
+
+        cpu = 2 ** bit
+
+        cmd = "partrt run -c " + hex(cpu) + " -f 60 rt watch ls"
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, shell=True,
+                             preexec_fn=os.setsid)
+
+        time.sleep(1)
+
+        (task_name, affinity, last_cpu, policy, prio) = get_task_info(p.pid)
+
+        if affinity != cpu:
+            print_msg("part_tc_4_3: RT task: " + task_name +
+                      " has bad affinity: " + hex(affinity) + " expected: " +
+                      hex(cpu))
+            return FAIL
+
+        os.killpg(p.pid, signal.SIGTERM)
+
+        return SUCCESS
+
+    except:
+        print_msg("part_tc_4_3 Failed because of exception: " +
                   str(sys.exc_info()[1]))
         return FAIL
 
@@ -799,7 +835,7 @@ def part_tc_8_mov():
 
         if affinity != nrt_mask:
             print_msg("part_tc_8: NRT process has bad affinity: " +
-                      hex(affinity))
+                      hex(affinity) + " expected: " + hex(nrt_mask))
             return FAIL
 
         if rt_mask & (1 << last_cpu) != 0:
@@ -808,10 +844,16 @@ def part_tc_8_mov():
             return FAIL
 
         # Move the process
-        cmd = ("partrt move " + str(p1.pid) + " rt")
+        bit = 0
+        while (rt_mask & (0x1 << bit)) == 0:
+            bit = bit + 1
+
+        cpu = 2 ** bit
+
+        cmd = ("partrt move -c " + hex(cpu) + " " + str(p1.pid) + " rt")
         p2 = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+                              preexec_fn=os.setsid)
 
         p2.wait()
         time.sleep(1)
@@ -819,9 +861,9 @@ def part_tc_8_mov():
         # Check that the process executes within the RT partition
         (task_name, affinity, last_cpu, policy, prio) = get_task_info(p1.pid)
 
-        if affinity != rt_mask:
+        if affinity != cpu:
             print_msg("part_tc_8: RT process has bad affinity: " +
-                      hex(affinity))
+                      hex(affinity) + " expected: " + hex(cpu))
             return FAIL
 
         if rt_mask & (1 << last_cpu) == 0:
@@ -900,7 +942,7 @@ def nopart_tc_1_1_cleanup():
          numa_affinity, watchdog, check_interval) = get_env()
 
         # Create partitions
-        cmd = ("partrt create " + str(options.get_rt_mask()))
+        cmd = ("partrt create " + hex(options.get_rt_mask()))
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, shell=True,
                              preexec_fn=os.setsid)
@@ -953,7 +995,7 @@ def nopart_tc_1_2_cleanup():
 
         # Create partitions
         cmd = ("partrt -r rt1 -n nrt1 create -b -c -d -m -n -r -t -w " +
-               str(options.get_rt_mask()))
+               hex(options.get_rt_mask()))
 
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, shell=True,
@@ -1116,6 +1158,18 @@ def nopart_tc_3_bad_parameters():
         if bad_parameter(cmd, nopart_tc_name):
             return FAIL
 
+        cmd = "partrt run -c 1234 rt watch ls"
+        if bad_parameter(cmd, nopart_tc_name):
+            return FAIL
+
+        cmd = "partrt run -c asdf rt watch ls"
+        if bad_parameter(cmd, nopart_tc_name):
+            return FAIL
+
+        cmd = "partrt run -c rt watch ls"
+        if bad_parameter(cmd, nopart_tc_name):
+            return FAIL
+
         cmd = "partrt run -f 60 - rt watch ls"
         if bad_parameter(cmd, nopart_tc_name):
             return FAIL
@@ -1129,6 +1183,18 @@ def nopart_tc_3_bad_parameters():
             return FAIL
 
         cmd = "partrt move 0 rt"
+        if bad_parameter(cmd, nopart_tc_name):
+            return FAIL
+
+        cmd = "partrt move -c 1234 0 rt"
+        if bad_parameter(cmd, nopart_tc_name):
+            return FAIL
+
+        cmd = "partrt move -c asdf 0 rt"
+        if bad_parameter(cmd, nopart_tc_name):
+            return FAIL
+
+        cmd = "partrt move -c 0 rt"
         if bad_parameter(cmd, nopart_tc_name):
             return FAIL
 
@@ -1306,13 +1372,18 @@ def main(argv):
                                        SUCCESS))
 
     ############# PART_TC_4_1 ##############
-    test_result = (test_result | run_tc(part_tc_4_1_run_rt,
+    test_result = (test_result | run_tc(part_tc_4_1_run,
                                        "PART_TC_4_1",
                                        SUCCESS))
 
     ############# PART_TC_4_2 ##############
-    test_result = (test_result | run_tc(part_tc_4_2_run_nrt,
+    test_result = (test_result | run_tc(part_tc_4_2_run,
                                        "PART_TC_4_2",
+                                       SUCCESS))
+
+    ############# PART_TC_4_3 ##############
+    test_result = (test_result | run_tc(part_tc_4_3_run,
+                                       "PART_TC_4_3",
                                        SUCCESS))
 
     ############# PART_TC_5 ##############
