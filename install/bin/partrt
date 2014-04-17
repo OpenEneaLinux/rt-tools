@@ -44,6 +44,7 @@ partrt [options] create [cmd-options] <cpumask>
 partrt [options] undo [cmd-options]
 partrt [options] run [cmd-options] <partition> <command>
 partrt [options] move [cmd-options] <pid> <partition>
+partrt [options] list [cmd-options]
 
 The purpose of partrt is to administrate CPU partitions/domains with different
 requirements on OS jitter and real-time performance. partrt requires that the
@@ -161,6 +162,10 @@ If <cmd> is move:
                       include a subset of the CPUs of the selected partition.
 
         -h           Show this help text and exit.
+
+If <cmd> is list:
+
+        Display current partitions
 
 Example:
         Create RT partition on CPU 2 and 3:
@@ -757,7 +762,7 @@ run () {
         if [[ $(( $cpumask & $rt_mask )) -eq $cpumask ]]; then
             taskset -p $(printf "0x%x" "$cpumask") "$$" 2>&1 > /dev/null
         else
-            exit_msg "Invalid cpumask: $cpumask"
+            exit_msg "Invalid cpumask: $cpumask contains CPUs that is not part of $partition"
         fi
     fi
 
@@ -772,7 +777,7 @@ run () {
 
 
 #################
-# mov sub-command
+# move sub-command
 #################
 
 move () {
@@ -814,8 +819,38 @@ move () {
         if [[ $(( $cpumask & $rt_mask )) -eq $cpumask ]]; then
             taskset -p $(printf "0x%x" "$cpumask") "$pid" 2>&1 > /dev/null
         else
-            exit_msg "Invalid cpumask: $cpumask"
+            exit_msg "Invalid cpumask: $cpumask contains CPUs that is not part of $partition"
         fi
+    fi
+}
+
+#################
+# list sub-command
+#################
+
+list () {
+    CPUSET_ROOT=$(get_cpuset_root)
+    CPUSET_PREFIX=$(get_cpuset_prefix $CPUSET_ROOT)
+
+    while getopts ":h" o; do
+        case "${o}" in
+            h) usage; exit 0 ;;
+            \?) exit_msg "Invalid option: ${OPTARG} " ;;
+            :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument";;
+        esac
+    done
+
+    found_partitions=false
+    for dir in $(ls $CPUSET_ROOT); do
+        if [[ -a $CPUSET_ROOT/$dir/${CPUSET_PREFIX}cpus ]]; then
+            found_partitions=true
+            cpus=$(cat $CPUSET_ROOT/$dir/${CPUSET_PREFIX}cpus)
+            echo "Name:$dir CPUs: $cpus"
+        fi
+    done
+
+    if [ "$found_partitions" = false ]; then
+        echo "Could not find any partitions"
     fi
 }
 
@@ -843,7 +878,7 @@ OPTIND=1
 
 # Determine sub-command
 #######################
-declare -a VALID_SUBCOMMANDS="create undo run move"
+declare -a VALID_SUBCOMMANDS="create undo run move list"
 
 for cmd in $VALID_SUBCOMMANDS; do
     if [[ $cmd == ${1:-} ]]; then
