@@ -375,7 +375,7 @@ def check_cpuset_cleanup(rt_partition, nrt_partition):
 # PART_TC_1
 # Run partition and check return code and check affinity in stderr.
 # Leaves system in a partitioned state.
-def part_tc_1_prepare():
+def part_tc_1_1_prepare():
     try:
         cmd = ("partrt create " + hex(options.get_rt_mask()))
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
@@ -385,7 +385,7 @@ def part_tc_1_prepare():
 
         if p.returncode != 0:
             print_msg(stdout + stderr)
-            print_msg("part_tc_1: Failed: partrt returned non-zero value: " +
+            print_msg("part_tc_1_1: Failed: partrt returned non-zero value: " +
                       str(p.returncode))
             return FAIL
 
@@ -395,20 +395,71 @@ def part_tc_1_prepare():
         for line in stdout.splitlines():
             if "Isolated CPUs (rt):" in line:
                 if rt_mask != liststr2mask(line.split(':')[1]):
-                    print_msg("part_tc_1 : Failed, partrt returned bad RT CPU" +
+                    print_msg("part_tc_1_1 : Failed, partrt returned bad RT CPU" +
                               " list:" + line.split(':')[1])
                     return FAIL
 
             if "Non-isolated CPUs (nrt):" in line:
                 if nrt_mask != liststr2mask(line.split(':')[1]):
-                    print_msg("part_tc_1 : Failed, partrt returned bad NRT" +
+                    print_msg("part_tc_1_1 : Failed, partrt returned bad NRT" +
                               " CPU list:" + line.split(':')[1])
                     return FAIL
 
         return SUCCESS
 
     except:
-        print_msg("part_tc_1 Failed because of exception: " +
+        print_msg("part_tc_1_1 Failed because of exception: " +
+                  str(sys.exc_info()[1]))
+        return FAIL
+
+# PART_TC_1_2 Test the list sub-command
+def part_tc_1_2_prepare():
+    try:
+        cmd = "partrt list"
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, shell=True,
+                             preexec_fn=os.setsid)
+        (stdout, stderr) = p.communicate()
+
+        if p.returncode != 0:
+            print_msg(stdout + stderr)
+            print_msg("part_tc_1_2 Failed: " + cmd +
+                   " returned with abnormal code: " + str(p.returncode))
+            return FAIL
+
+        found_rt = False
+        found_nrt = False
+
+        for line in stdout.splitlines():
+            if "Name:rt" in line:
+                real_mask = liststr2mask(line.split(":")[2])
+                rt_mask = options.get_rt_mask()
+                if real_mask != rt_mask:
+                    print_msg("part_tc_1_2 Failed: rt partition has CPU mask " +
+                              hex(real_mask) + " expected: " + hex (rt_mask))
+                    return FAIL
+
+                found_rt = True
+
+            if "Name:nrt" in line:
+                real_mask = liststr2mask(line.split(":")[2])
+                nrt_mask = (~options.get_rt_mask() &
+                             (2 ** multiprocessing.cpu_count() - 1))
+                if real_mask != nrt_mask:
+                    print_msg("part_tc_1_2 Failed: nrt partition has CPU mask "
+                              + hex(real_mask) + " expected: " + hex (nrt_mask))
+                    return FAIL
+
+                found_nrt = True
+
+        if not(found_rt and found_nrt):
+                print_msg("part_tc_1_2 Failed: Could not find all partitions")
+                return FAIL
+
+        return SUCCESS
+
+    except:
+        print_msg("part_tc_1_2 Failed because of exception: " +
                   str(sys.exc_info()[1]))
         return FAIL
 
@@ -930,6 +981,7 @@ def part_tc_10_cleanup():
                   str(sys.exc_info()[1]))
         return FAIL
 
+
 # NOPART_TC_1_1 Check that partition undo restores environment from file
 # Leaves system in unpartitioned state
 def nopart_tc_1_1_cleanup():
@@ -1341,9 +1393,14 @@ def main(argv):
 
     # Run the tests
 
-    ############# PART_TC_1 #############
-    test_result = (test_result | run_tc(part_tc_1_prepare,
-                                       "PART_TC_1",
+    ############# PART_TC_1_1 #############
+    test_result = (test_result | run_tc(part_tc_1_1_prepare,
+                                       "PART_TC_1_1",
+                                       SUCCESS))
+
+    ############# PART_TC_1_2 #############
+    test_result = (test_result | run_tc(part_tc_1_2_prepare,
+                                       "PART_TC_1_2",
                                        SUCCESS))
 
     ############# PART_TC_2_1 #############
@@ -1411,7 +1468,7 @@ def main(argv):
                                         "PART_TC_9",
                                         SUCCESS))
 
-    ############# PART_TC_9 ##############
+    ############# PART_TC_10 ##############
     test_result = (test_result | run_tc(part_tc_10_cleanup,
                                         "PART_TC_10",
                                         SUCCESS))
