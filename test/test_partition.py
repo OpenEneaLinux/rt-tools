@@ -53,7 +53,8 @@ SUPPORTED_TARGETS = [
     "keystone-evm",
     "chiefriver",
     "p2041rdb",
-    "crystalforest-server"
+    "crystalforest-server",
+    "romley-ivb"
     ]
 
 # Every new test target has to be added here and its irq_whitelist and
@@ -91,7 +92,10 @@ class targetOptions:
                           ],
             "crystalforest-server" : [0, # per CPU timer
                             2  # Not registered
-                            ]
+                            ],
+            "romley-ivb" : [0, # per CPU timer
+                2 # Not registered
+                ]
             }[target]
 
         self.task_whitelist = {
@@ -103,22 +107,28 @@ class targetOptions:
                             "crypto", "kpsmoused", "khelper"
                             ],
             "p2041rdb" : ["deferwq", "cpuset", "khelper", "kblockd", "ata_sff",
-                          "rpciod","nfsiod", "crypto", "ffe110000.spi", "edac-poller"
+                          "rpciod","nfsiod", "crypto", "ffe110000.spi",
+                          "edac-poller"
                           ],
             "crystalforest-server" : ["khelper", "netns", "writeback",
                                       "writeback", "bioset", "kblockd",
                                       "ata_sff", "md", "rpciod", "nfsiod",
                                       "crypto", "ext4-dio-unwrit",
                                       "kvm-irqfd-clean"
-                                      ]
-
+                                      ],
+            "romley-ivb" : ["khelper", "netns", "writeback",
+                            "writeback", "bioset", "kblockd",
+                            "ata_sff", "md", "rpciod", "nfsiod",
+                            "crypto",  "kpsmoused", "khelper"
+                            ],
             }[target]
 
         self.rt_mask = {
             "keystone-evm" : 0xe,
             "chiefriver" : 0xe,
             "p2041rdb" : 0xe,
-            "crystalforest-server" : 0xaaaa # NUMA node 1
+            "crystalforest-server" : 0xaaaa, # NUMA node 1
+            "romley-ivb" : 0x820 # CPU 5 and CPU 11 (same core id in cpuinfo)
             }[target]
 
         # None, or node nr
@@ -126,7 +136,8 @@ class targetOptions:
             "keystone-evm" : None,
             "chiefriver" :None,
             "p2041rdb" : None,
-            "crystalforest-server" : 1
+            "crystalforest-server" : 1,
+            "romley-ivb" : None
             }[target]
 
     def get_irq_whitelist(self):
