@@ -1,0 +1,6 @@
+Removed delay_vmtimer:
+- This is a deferable timer, and should therefore have no impact if no ticks occur.
+
+Removed disable_throttling:
+- As the RT manual has documented, RT throttling should never need to be disabled. And if this is needed, this is such a special case that partrt should not be involved in this.
+

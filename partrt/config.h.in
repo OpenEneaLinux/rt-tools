@@ -1,0 +1,3 @@
+/* Version information */
+#define partrt_VERSION_MAJOR @partrt_VERSION_MAJOR@
+#define partrt_VERSION_MINOR @partrt_VERSION_MINOR@
