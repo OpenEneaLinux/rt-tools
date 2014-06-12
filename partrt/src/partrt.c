@@ -240,6 +240,8 @@ int main(int argc, char *argv[])
 	size_t idx;
 	int c;
 
+	tracef("partrt: Execution begins");
+
 	while ((c = getopt_long(argc, argv, short_options, long_options,
 				NULL)) != -1) {
 		switch(c) {

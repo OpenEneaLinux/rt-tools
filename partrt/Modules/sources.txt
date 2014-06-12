@@ -1,1 +1,0 @@
-FindCheck.cmake         https://github.com/pipian/libcueify/blob/master/cmake/Modules/FindLibCheck.cmake

@@ -9,6 +9,29 @@ START_TEST(test_cpuset_nr_cpus)
 }
 END_TEST
 
+START_TEST(test_cpuset_1)
+{
+	const int nr_cpus = cpuset_nr_cpus();
+
+	cpu_set_t * const set = cpuset_alloc_zero();
+	cpu_set_t * const set1 = cpuset_alloc_set(0);
+	int cpu;
+
+	for (cpu = 0; cpu < (nr_cpus + 5); cpu++)
+		ck_assert_int_eq(0, cpuset_isset(cpu, set));
+
+	cpuset_set(0, set);
+
+	for (cpu = 0; cpu < (nr_cpus + 5); cpu++)
+		ck_assert_int_eq((cpu == 0) ? 1 : 0, cpuset_isset(cpu, set));
+
+	for (cpu = 0; cpu < (nr_cpus + 5); cpu++)
+		ck_assert_int_eq((cpu == 0) ? 1 : 0, cpuset_isset(cpu, set1));
+
+	cpuset_free(set);
+}
+END_TEST
+
 Suite *
 suite_cpumask(void)
 {
@@ -16,6 +39,7 @@ suite_cpumask(void)
 
 	TCase *tc_core = tcase_create("Core");
 	tcase_add_test(tc_core, test_cpuset_nr_cpus);
+	tcase_add_test(tc_core, test_cpuset_1);
 	suite_add_tcase(s, tc_core);
 
 	return s;

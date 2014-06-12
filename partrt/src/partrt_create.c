@@ -1,5 +1,6 @@
 #include <getopt.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <limits.h>
 
 #include "partrt.h"
@@ -117,4 +118,6 @@ int cmd_create(int argc, char *argv[])
 	info("RT partition: %s\n", cpuset_hex(rt_mask));
 
 	/* Insert implementation here */
+
+	fflush(stdout);
 }

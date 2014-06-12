@@ -2,6 +2,12 @@
 
 #include <sched.h>
 
+#ifdef HAVE_LTTNG
+#  include <lttng/tracef.h>
+#else
+#  define tracef(...)
+#endif
+
 /*
  * partrt.c
  */

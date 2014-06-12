@@ -14,8 +14,8 @@ int cpuset_nr_cpus(void)
 	if (nr_cpus == 0) {
 		nr_cpus = get_nprocs_conf();
 		if (nr_cpus <= 0)
-			fail("Could not determine number of CPUs");
-		info("%d CPUs configured in kernel", nr_cpus);
+			fail("Could not determine number of CPUs\n");
+		info("%d CPUs configured in kernel\n", nr_cpus);
 	}
 
 	return nr_cpus;
@@ -25,7 +25,7 @@ cpu_set_t *cpuset_alloc_zero(void)
 {
 	cpu_set_t * const set = CPU_ALLOC(cpuset_nr_cpus());
 	if (set == NULL)
-		fail("Out of memory allocating CPU mask for %d CPUs",
+		fail("Out of memory allocating CPU mask for %d CPUs\n",
 			cpuset_nr_cpus());
 
 	CPU_ZERO_S(CPU_ALLOC_SIZE(cpuset_nr_cpus()), set);
@@ -41,7 +41,7 @@ void cpuset_free(cpu_set_t *set)
 void cpuset_set(int cpu, cpu_set_t *set)
 {
 	if (cpu >= cpuset_nr_cpus())
-		fail("Internal error: Illegal use of cpuset_set(%d,...): Only %d CPUs in the set",
+		fail("Internal error: Illegal use of cpuset_set(%d,...): Only %d CPUs in the set\n",
 			cpu, cpuset_nr_cpus());
 	CPU_SET_S(cpu, CPU_ALLOC_SIZE(cpuset_nr_cpus()), set);
 }
@@ -73,13 +73,15 @@ const char *cpuset_hex(const cpu_set_t *set)
 	char *curr;
 	int cpu;
 	const int nr_cpus = cpuset_nr_cpus();
-	const size_t str_size = 1 /* NUL */ + (nr_cpus / 4);
+	const size_t str_size = 1 /* NUL */ + (nr_cpus / 4) + 1 /* round up */;
+
+	tracef("cpuset_hex(): Entered");
 
 	if (str == NULL)
 		str = malloc(str_size);
 
 	if (str == NULL)
-		fail("Out of memory allocating %zu bytes", str_size);
+		fail("Out of memory allocating %zu bytes\n", str_size);
 
 	curr = str + str_size - 1;
 	*curr = '\0';
@@ -96,8 +98,11 @@ const char *cpuset_hex(const cpu_set_t *set)
 			*curr = 'a' + (ch - 10);
 		else
 			*curr = '0' + ch;
+		tracef("cpuset_hex(): str=%p str[end]=%p curr=%p *curr=%c",
+			str, str + str_size, curr, *curr);
 	}
 
+	tracef("cpuset_hex(): Exited");
 	return str;
 }
 
@@ -105,6 +110,8 @@ cpu_set_t *cpuset_from_list(const char *list)
 {
 	const char * const original_list = list;
 	cpu_set_t *set = cpuset_alloc_zero();
+
+	tracef("cpuset_from_list('%s'): Entered", list);
 
 	while (*list != '\0') {
 		int bit;
@@ -130,6 +137,9 @@ cpu_set_t *cpuset_from_list(const char *list)
 		} else {
 			range_last = range_first;
 		}
+
+		tracef("cpuset_from_list(): list='%s' range_first=%ld range_last=%ld",
+			list, range_first, range_last);
 
 		/* Set all bits in range */
 		for (bit = range_first; bit <= range_last; bit++)
