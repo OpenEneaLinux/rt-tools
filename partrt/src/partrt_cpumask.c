@@ -68,16 +68,13 @@ size_t cpuset_alloc_size(void)
 	return CPU_ALLOC_SIZE(cpuset_nr_cpus());
 }
 
-const char *cpuset_hex(const cpu_set_t *set)
+char *cpuset_hex(const cpu_set_t *set)
 {
-	static char *str;
 	char *curr;
 	int cpu = 0;
 	const int nr_cpus = cpuset_nr_cpus();
 	const size_t str_size = 1 /* NUL */ + ((nr_cpus+3) / 4) /* round up */;
-
-	if (str == NULL)
-		str = malloc(str_size);
+	char *str = malloc(str_size);
 
 	if (str == NULL)
 		fail("Out of memory allocating %zu bytes\n", str_size);
@@ -97,6 +94,70 @@ const char *cpuset_hex(const cpu_set_t *set)
 			*curr = 'a' + (ch - 10);
 		else
 			*curr = '0' + ch;
+	}
+
+	return str;
+}
+
+static int cpuset_list_write(size_t curr_idx, size_t size_alloced,
+			int first_cpu, int last_cpu, char *str)
+{
+	int status;
+
+	if (first_cpu == last_cpu)
+		status = snprintf(str + curr_idx, size_alloced - curr_idx,
+				"%s%d", (curr_idx > 0) ? "," : "", first_cpu);
+	else
+		status = snprintf(str + curr_idx, size_alloced - curr_idx,
+				"%s%d-%d", (curr_idx > 0) ? "," : "",
+				first_cpu, last_cpu);
+
+	if (status < 0)
+		fail("cpuset_list_write(): Internal error: snprintf() returned error\n");
+
+	return status;
+}
+
+char *cpuset_list(const cpu_set_t *set)
+{
+	int curr_idx = 0;
+	int size_alloced = 0;
+	char *str = NULL;
+	const int nr_cpus = cpuset_nr_cpus();
+	int cpu;
+	int first_cpu = -1;
+	int last_cpu = -1;
+
+	for (cpu = 0; cpu < nr_cpus; cpu++) {
+		int bytes_needed;
+
+		if (first_cpu == -1) {
+			if (cpuset_isset(cpu, set))
+				first_cpu = cpu;
+			continue;
+		}
+
+		if (cpuset_isset(cpu, set))
+			continue;
+
+		last_cpu = cpu - 1;
+		bytes_needed = cpuset_list_write(
+			curr_idx, size_alloced, first_cpu, last_cpu, str);
+		if (bytes_needed >= (size_alloced - curr_idx)) {
+			str = realloc(
+				str, size_alloced + bytes_needed + 1);
+			size_alloced += bytes_needed + 1;
+			bytes_needed = cpuset_list_write(
+				curr_idx, size_alloced, first_cpu,
+				last_cpu, str);
+
+			if (bytes_needed >= (size_alloced - curr_idx))
+				fail("cpuset_list(): Internal error: Did not allocate enough. bytes_needed=%d, size_alloced=%d, curr_idx=%d\n",
+					bytes_needed, size_alloced, curr_idx);
+		}
+
+		curr_idx += bytes_needed;
+		first_cpu = -1;
 	}
 
 	return str;

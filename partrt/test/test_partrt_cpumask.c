@@ -111,7 +111,7 @@ START_TEST(test_cpuset_hex_from_list)
 {
 	static const char in_hex[] = "79a";
 	cpu_set_t *set;
-	const char *returned_hex;
+	char *returned_hex;
 
 	configured_nr_cpus = 11;
 	set = cpuset_alloc_from_list("1,7-10,3-4");
@@ -121,6 +121,7 @@ START_TEST(test_cpuset_hex_from_list)
 		"in_hex='%s' returned_hex='%s'", in_hex, returned_hex);
 
 	cpuset_free(set);
+	free(returned_hex);
 }
 END_TEST
 
@@ -132,7 +133,7 @@ START_TEST(test_cpuset_alloc_complement)
 	static const char in_hex[] = "f865";
 	cpu_set_t *set;
 	cpu_set_t *comp_set;
-	const char *returned_hex;
+	char *returned_hex;
 
 	configured_nr_cpus = 16;
 	set = cpuset_alloc_from_list("1,7-10,3-4");
@@ -144,17 +145,20 @@ START_TEST(test_cpuset_alloc_complement)
 
 	cpuset_free(set);
 	cpuset_free(comp_set);
+	free(returned_hex);
 }
 END_TEST
 
 static void try_alloc_from_mask(const char *in_mask, const char *out_mask)
 {
 	cpu_set_t * const set = cpuset_alloc_from_mask(in_mask);
-	const char * const returned_mask = cpuset_hex(set);
+	char * const returned_mask = cpuset_hex(set);
 
 	ck_assert_msg(strcmp(returned_mask, out_mask) == 0,
 		"in_mask='%s' out_mask='%s' returned_mask='%s'",
 		in_mask, out_mask, returned_mask);
+
+	free(returned_mask);
 }
 
 START_TEST(test_cpuset_alloc_from_mask_1)
@@ -169,6 +173,21 @@ START_TEST(test_cpuset_alloc_from_mask_2)
 {
 	configured_nr_cpus = 14;
 	try_alloc_from_mask("2Ee0", "2ee0");
+}
+END_TEST
+
+START_TEST(test_cpuset_list)
+{
+	static const char list[] = "1-2,4-7,9";
+	cpu_set_t * const set = cpuset_alloc_from_list(list);
+	char *returned_list = cpuset_list(set);
+
+	ck_assert_msg(strcmp(list, returned_list) == 0,
+		"list='%s' returned_list='%s'",
+		list, returned_list);
+
+	cpuset_free(set);
+	free(returned_list);
 }
 END_TEST
 
@@ -189,6 +208,7 @@ suite_cpumask(void)
 	tcase_add_test(tc_core, test_cpuset_alloc_complement);
 	tcase_add_test(tc_core, test_cpuset_alloc_from_mask_1);
 	tcase_add_test(tc_core, test_cpuset_alloc_from_mask_2);
+	tcase_add_test(tc_core, test_cpuset_list);
 	suite_add_tcase(s, tc_core);
 
 	return s;
