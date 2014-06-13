@@ -157,3 +157,43 @@ cpu_set_t *cpuset_alloc_complement(const cpu_set_t *set)
 
 	return comp_set;
 }
+
+cpu_set_t *cpuset_alloc_from_mask(const char *mask)
+{
+	const int nr_cpus = cpuset_nr_cpus();
+	cpu_set_t * const set = cpuset_alloc_zero();
+	const char *curr;
+	int bit = 0;
+
+	if (strncmp(mask, "0x", 2) == 0) {
+		TRACEF("Skipped 0x");
+		mask += 2;
+	}
+
+	for (curr = mask + strlen(mask) - 1;
+	     curr >= mask;
+	     curr--) {
+		int val;
+		const int starting_bit = bit;
+
+		if ((*curr >= '0') && (*curr <= '9'))
+			val = *curr - '0';
+		else if ((*curr >= 'a') && (*curr <= 'f'))
+			val = *curr - 'a' + 10;
+		else if ((*curr >= 'A') && (*curr <= 'F'))
+			val = *curr - 'A' + 10;
+		else
+			fail("%s: Character '%c' is not legal in hexadecimal mask\n", mask, *curr);
+
+		for (; bit < (starting_bit + 4); bit++) {
+			if (val & (1 << (bit - starting_bit))) {
+				if (bit >= nr_cpus)
+					fail("%s: Illegal mask, only %d cpus detected\n",
+						mask, nr_cpus);
+				cpuset_set(bit, set);
+			}
+		}
+	}
+
+	return set;
+}

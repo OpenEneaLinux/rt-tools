@@ -59,3 +59,5 @@ extern int cpuset_isset(int cpu, const cpu_set_t *set);
 extern size_t cpuset_alloc_size(void);
 extern const char *cpuset_hex(const cpu_set_t *set);
 extern cpu_set_t *cpuset_alloc_from_list(const char *list);
+extern cpu_set_t *cpuset_alloc_complement(const cpu_set_t *set);
+extern cpu_set_t *cpuset_alloc_from_mask(const char *mask);

@@ -14,7 +14,7 @@ static int numa_node = 0;
 static int restart_hotplug = 1;
 static int disable_watchdog = 1;
 static cpu_set_t *rt_mask = NULL;
-/* static cpu_set_t *nrt_mask = NULL; */
+static cpu_set_t *nrt_mask = NULL;
 
 static void usage_create(void)
 {
@@ -112,12 +112,24 @@ int cmd_create(int argc, char *argv[])
 		}
 	}
 
-	if ((rt_mask == NULL) && (optind >= argc))
-		fail("partrt create: No CPU configured for RT partition, nothing to do\n");
+	if (rt_mask == NULL) {
+		if (optind >= argc)
+			fail("partrt create: No CPU configured for RT partition, nothing to do\n");
+		rt_mask = cpuset_alloc_from_mask(argv[optind]);
+		optind++;
+	}
 
-	info("RT partition: %s\n", cpuset_hex(rt_mask));
+	if (optind < argc)
+		fail("partrt create: Too many parameters given. Use 'partrt create --help' for help.\n");
+
+	nrt_mask = cpuset_alloc_complement(rt_mask);
+
+	info("RT partition : %s\n", cpuset_hex(rt_mask));
+	info("nRT partition: %s\n", cpuset_hex(nrt_mask));
 
 	/* Insert implementation here */
+	
+
 
 	fflush(stdout);
 

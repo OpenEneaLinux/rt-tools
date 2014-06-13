@@ -147,6 +147,31 @@ START_TEST(test_cpuset_alloc_complement)
 }
 END_TEST
 
+static void try_alloc_from_mask(const char *in_mask, const char *out_mask)
+{
+	cpu_set_t * const set = cpuset_alloc_from_mask(in_mask);
+	const char * const returned_mask = cpuset_hex(set);
+
+	ck_assert_msg(strcmp(returned_mask, out_mask) == 0,
+		"in_mask='%s' out_mask='%s' returned_mask='%s'",
+		in_mask, out_mask, returned_mask);
+}
+
+START_TEST(test_cpuset_alloc_from_mask_1)
+{
+	configured_nr_cpus = 16;
+	try_alloc_from_mask("0xf01F", "f01f");
+}
+END_TEST
+
+
+START_TEST(test_cpuset_alloc_from_mask_2)
+{
+	configured_nr_cpus = 14;
+	try_alloc_from_mask("2Ee0", "2ee0");
+}
+END_TEST
+
 Suite *
 suite_cpumask(void)
 {
@@ -162,6 +187,8 @@ suite_cpumask(void)
 	tcase_add_test(tc_core, test_cpuset_alloc_set);
 	tcase_add_test(tc_core, test_cpuset_hex_from_list);
 	tcase_add_test(tc_core, test_cpuset_alloc_complement);
+	tcase_add_test(tc_core, test_cpuset_alloc_from_mask_1);
+	tcase_add_test(tc_core, test_cpuset_alloc_from_mask_2);
 	suite_add_tcase(s, tc_core);
 
 	return s;
