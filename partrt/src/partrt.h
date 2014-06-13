@@ -2,11 +2,32 @@
 
 #include <sched.h>
 
+#define STR(x) #x
+#define STRSTR(x) STR(x)
+
+/*
+ * For those believing in printf debugging, lttng is an alternative. Use
+ * TRACEF() macro like a printf() statement to do the debugging. Then use
+ * the following commands:
+ * make
+ * lttng create
+ * lttng enable-event -u -a
+ * lttng start
+ * make test
+ * lttng stop
+ * lttng view
+ *
+ * Use "lttng destroy" before starting over, or else the trace log will contain
+ * old entries as well as new ones.
+ */
 #ifdef HAVE_LTTNG
 #  include <lttng/tracef.h>
+#  define TRACEF(fmt, ...) tracef(__FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt, __func__, ##__VA_ARGS__)
 #else
-#  define tracef(...)
+#  define TRACEF(...)
 #endif
+
+
 
 /*
  * partrt.c
@@ -37,4 +58,4 @@ extern cpu_set_t *cpuset_alloc_set(int cpu);
 extern int cpuset_isset(int cpu, const cpu_set_t *set);
 extern size_t cpuset_alloc_size(void);
 extern const char *cpuset_hex(const cpu_set_t *set);
-extern cpu_set_t *cpuset_from_list(const char *list);
+extern cpu_set_t *cpuset_alloc_from_list(const char *list);

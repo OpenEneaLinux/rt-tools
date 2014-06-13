@@ -40,7 +40,7 @@ void fail(const char *format, ...)
 	vfprintf(stdout, format, va);
 	va_end(va);
 
-	exit(1);
+	exit(EXIT_FAILURE);
 }
 
 void info(const char *format, ...)

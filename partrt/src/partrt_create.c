@@ -14,7 +14,7 @@ static int numa_node = 0;
 static int restart_hotplug = 1;
 static int disable_watchdog = 1;
 static cpu_set_t *rt_mask = NULL;
-static cpu_set_t *nrt_mask = NULL;
+/* static cpu_set_t *nrt_mask = NULL; */
 
 static void usage_create(void)
 {
@@ -102,7 +102,7 @@ int cmd_create(int argc, char *argv[])
 			disable_watchdog = 0;
 			break;
 		case 'C':
-			rt_mask = cpuset_from_list(optarg);
+			rt_mask = cpuset_alloc_from_list(optarg);
 			break;
 		case '?':
 			exit(1);
@@ -120,4 +120,6 @@ int cmd_create(int argc, char *argv[])
 	/* Insert implementation here */
 
 	fflush(stdout);
+
+	return 0;
 }

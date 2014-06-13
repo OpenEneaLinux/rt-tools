@@ -30,7 +30,6 @@
 #include <stdlib.h>
 
 #include "partrt.h"
-#include "config.h"
 
 const char *appname;
 
@@ -104,6 +103,7 @@ static void version(void)
 	exit(0);
 }
 
+#if 0
 static void usage_undo(void)
 {
 	puts("partrt [options] undo [cmd-options]\n"
@@ -173,6 +173,7 @@ static void usage_list(void)
 
 	exit(0);
 }
+#endif
 
 unsigned long long option_to_ul(const char *str, unsigned long min,
 				unsigned long max, const char *errprefix)
@@ -199,18 +200,30 @@ unsigned long long option_to_ul(const char *str, unsigned long min,
 
 int cmd_undo(int argc, char *argv[])
 {
+	(void) argc;
+	(void) argv;
+	return 1;
 }
 
 int cmd_run(int argc, char *argv[])
 {
+	(void) argc;
+	(void) argv;
+	return 1;
 }
 
 int cmd_move(int argc, char *argv[])
 {
+	(void) argc;
+	(void) argv;
+	return 1;
 }
 
 int cmd_list(int argc, char *argv[])
 {
+	(void) argc;
+	(void) argv;
+	return 1;
 }
 
 
@@ -240,7 +253,7 @@ int main(int argc, char *argv[])
 	size_t idx;
 	int c;
 
-	tracef("partrt: Execution begins");
+	TRACEF("partrt: Execution begins");
 
 	while ((c = getopt_long(argc, argv, short_options, long_options,
 				NULL)) != -1) {

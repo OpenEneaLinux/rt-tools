@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <limits.h>
+#include <sys/sysinfo.h>
 
 /*
  * CPU mask handling functions.
@@ -71,11 +72,9 @@ const char *cpuset_hex(const cpu_set_t *set)
 {
 	static char *str;
 	char *curr;
-	int cpu;
+	int cpu = 0;
 	const int nr_cpus = cpuset_nr_cpus();
-	const size_t str_size = 1 /* NUL */ + (nr_cpus / 4) + 1 /* round up */;
-
-	tracef("cpuset_hex(): Entered");
+	const size_t str_size = 1 /* NUL */ + ((nr_cpus+3) / 4) /* round up */;
 
 	if (str == NULL)
 		str = malloc(str_size);
@@ -98,20 +97,15 @@ const char *cpuset_hex(const cpu_set_t *set)
 			*curr = 'a' + (ch - 10);
 		else
 			*curr = '0' + ch;
-		tracef("cpuset_hex(): str=%p str[end]=%p curr=%p *curr=%c",
-			str, str + str_size, curr, *curr);
 	}
 
-	tracef("cpuset_hex(): Exited");
 	return str;
 }
 
-cpu_set_t *cpuset_from_list(const char *list)
+cpu_set_t *cpuset_alloc_from_list(const char *list)
 {
 	const char * const original_list = list;
 	cpu_set_t *set = cpuset_alloc_zero();
-
-	tracef("cpuset_from_list('%s'): Entered", list);
 
 	while (*list != '\0') {
 		int bit;
@@ -127,6 +121,7 @@ cpu_set_t *cpuset_from_list(const char *list)
 				range_first);
 		list = endptr;
 		if (*list == '-') {
+			list++;
 			range_last = strtol(list, &endptr, 0);
 			if (endptr == list)
 				fail("%s: Malformed CPU list\n", original_list);
@@ -138,9 +133,6 @@ cpu_set_t *cpuset_from_list(const char *list)
 			range_last = range_first;
 		}
 
-		tracef("cpuset_from_list(): list='%s' range_first=%ld range_last=%ld",
-			list, range_first, range_last);
-
 		/* Set all bits in range */
 		for (bit = range_first; bit <= range_last; bit++)
 			cpuset_set(bit, set);
@@ -150,4 +142,18 @@ cpu_set_t *cpuset_from_list(const char *list)
 	}
 
 	return set;
+}
+
+cpu_set_t *cpuset_alloc_complement(const cpu_set_t *set)
+{
+	cpu_set_t * const comp_set = cpuset_alloc_zero();
+	const int nr_cpus = cpuset_nr_cpus();
+	int cpu;
+
+	for (cpu = 0; cpu < nr_cpus; cpu++) {
+		if (! cpuset_isset(cpu, set))
+			cpuset_set(cpu, comp_set);
+	}
+
+	return comp_set;
 }
