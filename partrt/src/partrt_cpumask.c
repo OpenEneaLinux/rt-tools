@@ -8,7 +8,7 @@
  * CPU mask handling functions.
  */
 
-int cpuset_nr_cpus(void)
+int cpumask_nr_cpus(void)
 {
 	static int nr_cpus;
 
@@ -22,57 +22,57 @@ int cpuset_nr_cpus(void)
 	return nr_cpus;
 }
 
-cpu_set_t *cpuset_alloc_zero(void)
+cpu_set_t *cpumask_alloc_zero(void)
 {
-	cpu_set_t * const set = CPU_ALLOC(cpuset_nr_cpus());
+	cpu_set_t * const set = CPU_ALLOC(cpumask_nr_cpus());
 	if (set == NULL)
 		fail("Out of memory allocating CPU mask for %d CPUs\n",
-			cpuset_nr_cpus());
+			cpumask_nr_cpus());
 
-	CPU_ZERO_S(CPU_ALLOC_SIZE(cpuset_nr_cpus()), set);
+	CPU_ZERO_S(CPU_ALLOC_SIZE(cpumask_nr_cpus()), set);
 
 	return set;
 }
 
-void cpuset_free(cpu_set_t *set)
+void cpumask_free(cpu_set_t *set)
 {
 	CPU_FREE(set);
 }
 
-void cpuset_set(int cpu, cpu_set_t *set)
+void cpumask_set(int cpu, cpu_set_t *set)
 {
-	if (cpu >= cpuset_nr_cpus())
-		fail("Internal error: Illegal use of cpuset_set(%d,...): Only %d CPUs in the set\n",
-			cpu, cpuset_nr_cpus());
-	CPU_SET_S(cpu, CPU_ALLOC_SIZE(cpuset_nr_cpus()), set);
+	if (cpu >= cpumask_nr_cpus())
+		fail("Internal error: Illegal use of cpumask_set(%d,...): Only %d CPUs in the set\n",
+			cpu, cpumask_nr_cpus());
+	CPU_SET_S(cpu, CPU_ALLOC_SIZE(cpumask_nr_cpus()), set);
 }
 
-cpu_set_t *cpuset_alloc_set(int cpu)
+cpu_set_t *cpumask_alloc_set(int cpu)
 {
-	cpu_set_t *set = cpuset_alloc_zero();
+	cpu_set_t *set = cpumask_alloc_zero();
 
-	cpuset_set(cpu, set);
+	cpumask_set(cpu, set);
 
 	return set;
 }
 
-int cpuset_isset(int cpu, const cpu_set_t *set)
+int cpumask_isset(int cpu, const cpu_set_t *set)
 {
-	if (cpu > cpuset_nr_cpus())
+	if (cpu > cpumask_nr_cpus())
 		return 0;
-	return CPU_ISSET_S(cpu, CPU_ALLOC_SIZE(cpuset_nr_cpus()), set);
+	return CPU_ISSET_S(cpu, CPU_ALLOC_SIZE(cpumask_nr_cpus()), set);
 }
 
-size_t cpuset_alloc_size(void)
+size_t cpumask_alloc_size(void)
 {
-	return CPU_ALLOC_SIZE(cpuset_nr_cpus());
+	return CPU_ALLOC_SIZE(cpumask_nr_cpus());
 }
 
-char *cpuset_hex(const cpu_set_t *set)
+char *cpumask_hex(const cpu_set_t *set)
 {
 	char *curr;
 	int cpu = 0;
-	const int nr_cpus = cpuset_nr_cpus();
+	const int nr_cpus = cpumask_nr_cpus();
 	const size_t str_size = 1 /* NUL */ + ((nr_cpus+3) / 4) /* round up */;
 	char *str = malloc(str_size);
 
@@ -86,7 +86,7 @@ char *cpuset_hex(const cpu_set_t *set)
 		char ch = 0;
 		int bit;
 		for (bit = 0; bit < 4; bit++, cpu++) {
-			if (cpuset_isset(cpu, set))
+			if (cpumask_isset(cpu, set))
 				ch |= (1 << bit);
 		}
 		curr--;
@@ -99,7 +99,7 @@ char *cpuset_hex(const cpu_set_t *set)
 	return str;
 }
 
-static int cpuset_list_write(size_t curr_idx, size_t size_alloced,
+static int cpumask_list_write(size_t curr_idx, size_t size_alloced,
 			int first_cpu, int last_cpu, char *str)
 {
 	int status;
@@ -113,17 +113,17 @@ static int cpuset_list_write(size_t curr_idx, size_t size_alloced,
 				first_cpu, last_cpu);
 
 	if (status < 0)
-		fail("cpuset_list_write(): Internal error: snprintf() returned error\n");
+		fail("cpumask_list_write(): Internal error: snprintf() returned error\n");
 
 	return status;
 }
 
-char *cpuset_list(const cpu_set_t *set)
+char *cpumask_list(const cpu_set_t *set)
 {
 	int curr_idx = 0;
 	int size_alloced = 0;
 	char *str = NULL;
-	const int nr_cpus = cpuset_nr_cpus();
+	const int nr_cpus = cpumask_nr_cpus();
 	int cpu;
 	int first_cpu = -1;
 	int last_cpu = -1;
@@ -132,27 +132,27 @@ char *cpuset_list(const cpu_set_t *set)
 		int bytes_needed;
 
 		if (first_cpu == -1) {
-			if (cpuset_isset(cpu, set))
+			if (cpumask_isset(cpu, set))
 				first_cpu = cpu;
 			continue;
 		}
 
-		if (cpuset_isset(cpu, set))
+		if (cpumask_isset(cpu, set))
 			continue;
 
 		last_cpu = cpu - 1;
-		bytes_needed = cpuset_list_write(
+		bytes_needed = cpumask_list_write(
 			curr_idx, size_alloced, first_cpu, last_cpu, str);
 		if (bytes_needed >= (size_alloced - curr_idx)) {
 			str = realloc(
 				str, size_alloced + bytes_needed + 1);
 			size_alloced += bytes_needed + 1;
-			bytes_needed = cpuset_list_write(
+			bytes_needed = cpumask_list_write(
 				curr_idx, size_alloced, first_cpu,
 				last_cpu, str);
 
 			if (bytes_needed >= (size_alloced - curr_idx))
-				fail("cpuset_list(): Internal error: Did not allocate enough. bytes_needed=%d, size_alloced=%d, curr_idx=%d\n",
+				fail("cpumask_list(): Internal error: Did not allocate enough. bytes_needed=%d, size_alloced=%d, curr_idx=%d\n",
 					bytes_needed, size_alloced, curr_idx);
 		}
 
@@ -163,10 +163,10 @@ char *cpuset_list(const cpu_set_t *set)
 	return str;
 }
 
-cpu_set_t *cpuset_alloc_from_list(const char *list)
+cpu_set_t *cpumask_alloc_from_list(const char *list)
 {
 	const char * const original_list = list;
-	cpu_set_t *set = cpuset_alloc_zero();
+	cpu_set_t *set = cpumask_alloc_zero();
 
 	while (*list != '\0') {
 		int bit;
@@ -196,7 +196,7 @@ cpu_set_t *cpuset_alloc_from_list(const char *list)
 
 		/* Set all bits in range */
 		for (bit = range_first; bit <= range_last; bit++)
-			cpuset_set(bit, set);
+			cpumask_set(bit, set);
 
 		if (*list == ',')
 			list++;
@@ -205,24 +205,24 @@ cpu_set_t *cpuset_alloc_from_list(const char *list)
 	return set;
 }
 
-cpu_set_t *cpuset_alloc_complement(const cpu_set_t *set)
+cpu_set_t *cpumask_alloc_complement(const cpu_set_t *set)
 {
-	cpu_set_t * const comp_set = cpuset_alloc_zero();
-	const int nr_cpus = cpuset_nr_cpus();
+	cpu_set_t * const comp_set = cpumask_alloc_zero();
+	const int nr_cpus = cpumask_nr_cpus();
 	int cpu;
 
 	for (cpu = 0; cpu < nr_cpus; cpu++) {
-		if (! cpuset_isset(cpu, set))
-			cpuset_set(cpu, comp_set);
+		if (! cpumask_isset(cpu, set))
+			cpumask_set(cpu, comp_set);
 	}
 
 	return comp_set;
 }
 
-cpu_set_t *cpuset_alloc_from_mask(const char *mask)
+cpu_set_t *cpumask_alloc_from_mask(const char *mask)
 {
-	const int nr_cpus = cpuset_nr_cpus();
-	cpu_set_t * const set = cpuset_alloc_zero();
+	const int nr_cpus = cpumask_nr_cpus();
+	cpu_set_t * const set = cpumask_alloc_zero();
 	const char *curr;
 	int bit = 0;
 
@@ -251,7 +251,7 @@ cpu_set_t *cpuset_alloc_from_mask(const char *mask)
 				if (bit >= nr_cpus)
 					fail("%s: Illegal mask, only %d cpus detected\n",
 						mask, nr_cpus);
-				cpuset_set(bit, set);
+				cpumask_set(bit, set);
 			}
 		}
 	}

@@ -25,6 +25,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "partrt.h"
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,3 +67,10 @@ void debug(const char *format, ...)
 	va_end(va);
 }
 
+void *checked_malloc(size_t size)
+{
+	void *mem = malloc(size);
+	if (mem == NULL)
+		fail("Out of memory allocating %zu bytes\n", size);
+	return mem;
+}

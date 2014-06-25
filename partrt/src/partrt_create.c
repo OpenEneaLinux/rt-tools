@@ -6,6 +6,8 @@
 #include <limits.h>
 #include <string.h>
 
+static int dry_run = 0;
+
 static int disable_numa_affinity = 1;
 static int migrate_bwq = 1;
 static int disable_machine_check = 1;
@@ -18,6 +20,8 @@ static cpu_set_t *rt_set = NULL;
 static cpu_set_t *nrt_set = NULL;
 static const char *rt_mask = NULL;
 static const char *nrt_mask = NULL;
+static const char *rt_list = NULL;
+static const char *nrt_list = NULL;
 
 static void usage_create(void)
 {
@@ -71,9 +75,10 @@ int cmd_create(int argc, char *argv[])
 		{ "no-restart-hotplug",  no_argument,       NULL, 'r' },
 		{ "keep-watchdog",       no_argument,       NULL, 'w' },
 		{ "cpu",                 required_argument, NULL, 'C' },
+		{ "dry-run",             no_argument,       NULL, 'D' },
 		{ NULL,                  0,                 NULL, '\0'}
 	};
-	static const char short_options[] = "+abcdhn:rtwC:";
+	static const char short_options[] = "+abcdhn:rtwC:D";
 	int c;
 
 	while ((c = getopt_long(argc, argv, short_options, long_options,
@@ -105,7 +110,10 @@ int cmd_create(int argc, char *argv[])
 			disable_watchdog = 0;
 			break;
 		case 'C':
-			rt_set = cpuset_alloc_from_list(optarg);
+			rt_set = cpumask_alloc_from_list(optarg);
+			break;
+		case 'D':
+			dry_run = 1;
 			break;
 		case '?':
 			exit(1);
@@ -115,25 +123,34 @@ int cmd_create(int argc, char *argv[])
 		}
 	}
 
-	if (rt_set == NULL) {
+	if ((rt_set == NULL) && !numa_partition) {
 		if (optind >= argc)
 			fail("partrt create: No CPU configured for RT partition, nothing to do\n");
-		rt_set = cpuset_alloc_from_mask(argv[optind]);
+		rt_set = cpumask_alloc_from_mask(argv[optind]);
 		optind++;
 	}
 
 	if (optind < argc)
 		fail("partrt create: Too many parameters given. Use 'partrt create --help' for help.\n");
 
-	nrt_set = cpuset_alloc_complement(rt_set);
+	nrt_set = cpumask_alloc_complement(rt_set);
 
-	rt_mask = cpuset_hex(rt_set);
-	nrt_mask = cpuset_hex(nrt_set);
+	rt_mask = cpumask_hex(rt_set);
+	nrt_mask = cpumask_hex(nrt_set);
+	rt_list = cpumask_list(rt_set);
+	nrt_list = cpumask_list(nrt_set);
 
-	info("RT partition : %s\n", rt_mask);
-	info("nRT partition: %s\n", nrt_mask);
+	info("RT partition : mask: %s, list: %s\n", rt_mask, rt_list);
+	info("nRT partition: mask: %s, list: %s\n", nrt_mask, nrt_list);
 
-	/* Insert implementation here */
+	/* Check if there already are partitions done already by checking
+	 * for sub-directories in cpuset. */
+	if (!cpuset_is_empty())
+		fail("There are already cpusets/partitions in the system");
+
+	
+
+	/* TODO: Insert implementation here */
 	
 
 
@@ -141,3 +158,11 @@ int cmd_create(int argc, char *argv[])
 
 	return 0;
 }
+
+
+/*
+ * TODO:
+ * - Introduce command line options to specify that isolcpus or nohz_full
+ *   kernel parameter should be used as CPU list.
+ * - Rename NRT to GP?
+ */

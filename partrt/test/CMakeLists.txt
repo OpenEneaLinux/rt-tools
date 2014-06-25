@@ -7,6 +7,11 @@ else ()
   message(STATUS "lttng-ust NOT detected, tracing disabled")
 endif (LTTNG_UST_FOUND)
 
+# Add profile support
+add_definitions(-g --coverage)
+
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+
 # If check unit test framework is found
 if (CHECK_FOUND)
   # Path to config.h
