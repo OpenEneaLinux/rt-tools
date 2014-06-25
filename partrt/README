@@ -1,0 +1,47 @@
+Compiling partrt
+================
+
+To compile partrt, create a new build directory and change into
+it. From this directory, write:
+
+$ cmake <path-to-partrt>
+
+This will build the necessary make files. These make files will
+automatically be updated when the CMakeList.txt files are changed.
+
+To build all binaries, including tests, do:
+
+$ make
+
+To run test binaries, do:
+
+$ make test
+
+Use LTTNG for debugging
+=======================
+There is debugging support using LTTNG. This is intended to be used
+during development as a low-overhead trace option. Make sure LTTNG is
+found by cmake by checking the output when running cmake as per above
+instructions.
+In the code, use the macro TRACEF() using same syntax as for printf().
+
+When running the code, prepare lttng this way:
+
+$ make            # Make sure you've got the latest build
+$ lttng destroy   # Not needed the first iteration
+$ lttng create    # You can add a name if you want
+$ lttng enable-event -u -a  # Enables all user events
+$ lttng start     # Trace started, lttng is waiting for the
+                  # application
+$ <run application, test whatever>
+$ lttng stop      # Stop tracing
+$ lttng view      # Displays the trace log. Can be executed multiple
+                  # times.
+
+Running tests with coverage results
+===================================
+Go to the build directory. Do:
+
+$ <path-to-partrt>/coverage.sh
+
+It will produce html page that can be viewed by a web browser.

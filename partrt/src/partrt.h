@@ -7,18 +7,8 @@
 
 /*
  * For those believing in printf debugging, lttng is an alternative. Use
- * TRACEF() macro like a printf() statement to do the debugging. Then use
- * the following commands:
- * make
- * lttng create
- * lttng enable-event -u -a
- * lttng start
- * make test
- * lttng stop
- * lttng view
- *
- * Use "lttng destroy" before starting over, or else the trace log will contain
- * old entries as well as new ones.
+ * TRACEF() macro like a printf() statement to do the debugging. See
+ * README files for more details.
  */
 #ifdef HAVE_LTTNG
 #  include <lttng/tracef.h>
