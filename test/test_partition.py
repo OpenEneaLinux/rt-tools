@@ -250,6 +250,45 @@ def get_task_info(pid):
                    str(sys.exc_info()[1]))
         return "", -1, -1, -1, -1
 
+# Read the content of a comma separated file and return the result as an
+# array of integers.
+def read_cpumask(file_str):
+    try:
+        if os.path.isfile(file_str):
+            with open(file_str) as f:
+                content = f.readline();
+                val = content.rstrip().split(',');
+                val = [int(x, base=16) for x in val];
+                return val
+
+    except:
+        print_msg ("read_cpumask: Failed because of exception: " +
+                   str(sys.exc_info()[1]))
+        return 0
+
+# Check if file has expected value. If not return FAIL. If file does not exist
+# or if file has expected value, return SUCCESS
+# This file is expected to have a value on the format 00000000,00000fff
+# The parameter expected_val is an array whith the least significant numbers in
+def check_file_cpumask(file_str, expected_val):
+    try:
+        val = read_cpumask(file_str)
+        lendiff = len(val) - len(expected_val);
+        expected_val = ([0] * lendiff) + expected_val; # Pad with zero
+        if val != expected_val:
+            print_msg("check_file Failed: " + file_str +
+                      " has value: " +
+                      str(','.join([str(x) for x in val])) + " Expected: " +
+                      str(','.join([str(x) for x in expected_val])))
+            return FAIL
+
+        return SUCCESS
+
+    except:
+        print_msg ("check_file: Failed because of exception: " +
+                   str(sys.exc_info()[1]))
+        return FAIL
+
 # Check if file has expected value. If not return FAIL. If file does not exist
 # or if file has expected value, return SUCCESS
 def check_file(file_str, expected_val, val_base):
@@ -304,8 +343,8 @@ def check_env(sched_rt_runtime_us, sched_tick_max_deferment, stat_interval,
             return FAIL
 
         # Check BWQ cleanup
-        if (check_file("/sys/bus/workqueue/devices/writeback/cpumask",
-                       cpumask, 16) == FAIL):
+        if (check_file_cpumask("/sys/bus/workqueue/devices/writeback/cpumask",
+                               [cpumask]) == FAIL):
             return FAIL
 
         # Check machine check cleanup (only CPU 0)
@@ -355,11 +394,6 @@ def get_env():
         if os.path.isfile("/proc/sys/kernel/watchdog"):
             with open("/proc/sys/kernel/watchdog") as f:
                 watchdog = int(f.readline())
-
-         # Get BWQ cpumask
-        if os.path.isfile("/sys/bus/workqueue/devices/writeback/cpumask"):
-            with open("/sys/bus/workqueue/devices/writeback/cpumask") as f:
-                cpumask = int(f.readline(), base=16)
 
         # Get machine check interval (only check CPU 0)
         file_str = ("/sys/devices/system/machinecheck/machinecheck0/" +
