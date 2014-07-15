@@ -57,73 +57,10 @@ SUPPORTED_TARGETS = [
     "romley-ivb"
     ]
 
-# Every new test target has to be added here and its irq_whitelist and
-# task_whitelist has to be updated
 class targetOptions:
     def __init__(self, target):
-        self.common_irq_whitelist = []
-        self.common_task_whitelist = ["kworker(.*)","ksoftirq(.*)",
-                                      "migration(.*)", "kthreadd"]
-        self.irq_whitelist = {
-            "keystone-evm" : [16,17,18,19,20,21,22,23,24,25,26,27,28, # not registered
-                              29,30, # Per CPU timer
-                              31, # Not registered
-                              512,513,514,515,516,517,518,519, # Not registered
-                              520,521,522,523,524,525,526,527, # DSP IPIs
-                              528,529,530,531,532,533,534,535,536,537,538,539, # Not registered
-                              543, # FIXME: gpio-keystone Power button
-                              608 # FIXME: DWC3 xhci-hcd:usb1
-                              ],
-            "chiefriver" : [0, # per CPU timer
-                            2  # Not registered
-                            ],
-            "p2041rdb" : [17,18,19, # FSL MSI
-                          116, 118, 120, 122, # QMan portal
-                          117, 119, 121, 123, # BMan portal
-                          468, # fman-err
-                          469, # bman-err
-                          470, # qman-err
-                          472, # pme-err
-                          481, # [PCI] PME, [EDAC] PCI err
-                          507, # ipi call function
-                          508, # ipi reschedule
-                          509, # ipi call function single
-                          510 # ipi debugger
-                          ],
-            "crystalforest-server" : [0, # per CPU timer
-                            2  # Not registered
-                            ],
-            "romley-ivb" : [0, # per CPU timer
-                2 # Not registered
-                ]
-            }[target]
-
-        self.task_whitelist = {
-            "keystone-evm" : ["nfsiod","crypto","21000400.spi","21000600.spi",
-                              "21000800.spi","kpsmoused", "deferwq", "khelper",
-                              "writeback", "bioset", "kblockd","rpciod"],
-            "chiefriver" : ["writeback", "bioset", "kblockd", "rpciod",
-                            "ata_sff", "deferwq", "netns", "md", "nfsiod",
-                            "crypto", "kpsmoused", "khelper"
-                            ],
-            "p2041rdb" : ["deferwq", "cpuset", "khelper", "kblockd", "ata_sff",
-                          "rpciod","nfsiod", "crypto", "ffe110000.spi",
-                          "edac-poller"
-                          ],
-            "crystalforest-server" : ["khelper", "netns", "writeback",
-                                      "writeback", "bioset", "kblockd",
-                                      "ata_sff", "md", "rpciod", "nfsiod",
-                                      "crypto", "ext4-dio-unwrit",
-                                      "kvm-irqfd-clean"
-                                      ],
-            "romley-ivb" : ["khelper", "netns", "writeback",
-                            "writeback", "bioset", "kblockd",
-                            "ata_sff", "md", "rpciod", "nfsiod",
-                            "crypto",  "kpsmoused", "khelper"
-                            ],
-            }[target]
-
         self.rt_mask = {
+            "default" : (2 ** (multiprocessing.cpu_count() - 1)),
             "keystone-evm" : 0xe,
             "chiefriver" : 0xe,
             "p2041rdb" : 0xe,
@@ -133,6 +70,7 @@ class targetOptions:
 
         # None, or node nr
         self.numa = {
+            "default" : None,
             "keystone-evm" : None,
             "chiefriver" :None,
             "p2041rdb" : None,
@@ -140,15 +78,10 @@ class targetOptions:
             "romley-ivb" : None
             }[target]
 
-    def get_irq_whitelist(self):
-        return self.irq_whitelist + self.common_irq_whitelist
-
-    def get_task_whitelist(self):
-        return self.task_whitelist + self.common_task_whitelist
-
 # Test globals
 global verbose
 global options
+global ref_count_irqs
 
 def print_msg(msg):
     global verbose
@@ -444,9 +377,42 @@ def check_cpuset_cleanup(rt_partition, nrt_partition):
                   str(sys.exc_info()[1]))
         return FAIL
 
+# Count the number of IRQs that includes the RT CPUs in its affinity
+# mask.
+def count_irgs_in_rt():
+    global options
+    try:
+        n = 0;
+        rt_mask = options.rt_mask
+
+        for irqvector in os.listdir("/proc/irq/"):
+            if os.path.isdir("/proc/irq/" + irqvector):
+                with open("/proc/irq/" + irqvector + "/smp_affinity") as f:
+                    affinity = int(f.readline(), base=16)
+                    if (affinity & rt_mask != 0):
+                        n += 1;
+
+        return n
+
+    except:
+        return -1
+
+
 ################################################################################
 #                                Test cases
 ################################################################################
+
+# PART_TC_0
+# Preparation for test cases needed to be done before partrt create
+# Calculate ref_count_irqs, needed by PART_TC_2_2
+def part_tc_0_1_irq_affinity():
+    global ref_count_irqs;
+    ref_count_irqs = count_irgs_in_rt()
+    if (ref_count_irqs == -1):
+        print_msg("part_tc_0_1 Failed because of exception: " +
+                  str(sys.exc_info()[1]))
+        return FAIL
+    return SUCCESS
 
 # PART_TC_1
 # Run partition and check return code and check affinity in stderr.
@@ -566,29 +532,20 @@ def part_tc_2_1_irq_affinity():
         return FAIL
 
 # PART_TC_2_2
-# Check that no IRQs (except whitelisted) includes the RT CPUs in its affinity
+# Check that at least one less IRQ includes the RT CPUs in its affinity
 # mask.
 def part_tc_2_2_irq_affinity():
-    try:
-        rt_mask = options.rt_mask
-
-        for irqvector in os.listdir("/proc/irq/"):
-            if os.path.isdir("/proc/irq/" + irqvector):
-                with open("/proc/irq/" + irqvector + "/smp_affinity") as f:
-                    affinity = int(f.readline(), base=16)
-                    if (not(int(irqvector) in options.get_irq_whitelist()) and
-                        (affinity & rt_mask != 0)):
-                        print_msg("part_tc_2_2: Bad default IRQ affinity:" +
-                                 " IRQ " + irqvector + " has affinity: " +
-                                  hex(affinity))
-                        return FAIL
-
-        return SUCCESS
-
-    except:
+    global ref_count_irqs;
+    n = count_irgs_in_rt()
+    if (n == -1):
         print_msg("part_tc_2_2 Failed because of exception: " +
                   str(sys.exc_info()[1]))
         return FAIL
+    elif (n >= ref_count_irqs):
+        print_msg("part_tc_2_2: No IRQ was migrated")
+        return FAIL
+    else:
+        return SUCCESS
 
 # PART_TC_3_1
 # Check that load balancing only is enabled for the nrt cpuset
@@ -669,41 +626,23 @@ def part_tc_3_2_proc_affinity():
         return FAIL
 
 # PART_TC_3_3
-# Check that no task in the root cpuset has executed on an RT CPU.
-# Note: Since load balancing has been turned of, it is ok if they
-# include an RT CPU in their affinity.
+# Check that at least one process was migrated. I.e. there are tasks in nrt
 def part_tc_3_3_proc_affinity():
-    global options
     try:
-        rt_mask = options.rt_mask
-        nrt_mask = ~rt_mask & (2 ** multiprocessing.cpu_count() - 1)
-
         cpuset_dir, cpuset_prefix = get_cpusets()
 
         if len(cpuset_dir) == 0:
             print_msg("part_tc_3_3: Kernel is lacking support for cpuset")
             return FAIL
 
-        tasks_path = cpuset_dir + "tasks"
+        tasks_path = cpuset_dir + "nrt/tasks"
 
         with open(tasks_path) as f:
-            for line in f.readlines():
-                pid = int(line)
-                (task_name, affinity, last_cpu,
-                 policy, prio) = get_task_info(pid)
+            nrt_tasks = f.readline()
 
-                found = None
-
-                for task in options.get_task_whitelist():
-                    found = re.search(task, task_name)
-                    if found:
-                        break
-
-                if not(found) and rt_mask & (1 << last_cpu) != 0:
-                    print_msg("part_tc_3_3: Bad last executed CPU. Task " +
-                              task_name + " executed on CPU: " +
-                              str(last_cpu))
-                    return FAIL
+        if len(nrt_tasks) == 0:
+            print_msg("part_tc_3_3: No tasks where migrated")
+            return FAIL
 
         return SUCCESS
 
@@ -899,7 +838,7 @@ def part_tc_6_rt_throttle():
         return FAIL
 
 # PART_TC_7
-# Test bad parameters on partiotitioned system
+# Test bad parameters on partitioned system
 def part_tc_7_bad_parameters():
     p = None
 
@@ -1475,6 +1414,10 @@ def usage():
     print '\t\t--verbose, -v:'
     print '\t\t\tExtra verbose output'
     print '\t\t\tSave test results'
+    print ''
+    print 'If <target> is not one of the preconfigured targets:'
+    print SUPPORTED_TARGETS
+    print 'a default configuration will be used.'
 
 def main(argv):
     global verbose
@@ -1485,17 +1428,19 @@ def main(argv):
 
     # Get mandatory parameter
     if len(argv) == 0:
-        print 'Missing mandatory target'
-        print "Available targets: ", SUPPORTED_TARGETS
-        exit(-1)
+        print 'Missing target parameter'
+        print ''
+        usage()
+        exit(1)
     else:
         target = argv[0]
 
     # Compare target against supported targets
     if not(target in SUPPORTED_TARGETS):
-        print_msg("Target: " + target + " is not supported")
-        print "Supported targets: ", SUPPORTED_TARGETS
-        exit(-1)
+        msg = "Unknown target: " + target
+        msg += ": Trying default configuration"
+        target = "default"
+        print msg
 
     options = targetOptions(target)
 
@@ -1524,6 +1469,11 @@ def main(argv):
     cleanup()
 
     # Run the tests
+
+    ############# PART_TC_0_1 #############
+    test_result = (test_result | run_tc(part_tc_0_1_irq_affinity,
+                                       "PART_TC_0_1",
+                                       SUCCESS))
 
     ############# PART_TC_1_1 #############
     test_result = (test_result | run_tc(part_tc_1_1_prepare,
