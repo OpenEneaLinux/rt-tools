@@ -28,7 +28,12 @@ if (CHECK_FOUND)
     add_test (${name} ${name})
   endmacro (define_test)
 
+  #
+  # List of all test cases, one line per implementation file.
+  #
+
   define_test (test_partrt_cpumask)
+  define_test (test_partrt_cpuset)
 
 else (CHECK_FOUND)
   message (STATUS "Unit tests not built")

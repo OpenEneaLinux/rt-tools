@@ -25,6 +25,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*
+ * This file implements a function interface towards the Linux kernel cpuset.
+ */
+
 #include "partrt.h"
 
 #include <sys/mount.h>
@@ -43,7 +47,41 @@
 #define CGROUP_CPUSET_ROOT "/sys/fs/cgroup/cpuset"
 #define CGROUP_ROOT        "/sys/fs/cgroup"
 
-static const char * const partition_name[2] = { "rt", "nrt" };
+static const char * const partition_name[] = { "rt", "nrt", NULL };
+
+char *fd_to_path_alloc(int fd)
+{
+	struct stat st;
+	char *path = NULL;
+	ssize_t name_size;
+	char *proc_path = NULL;
+
+	if (asprintf(&proc_path, "/proc/self/fd/%d", fd) == -1)
+		goto do_return;
+
+	do {
+		if (lstat(proc_path, &st) == -1) {
+			asprintf(&path, "<Could not translate file descriptor to file name: %s: Failed stat(): %s>",
+				proc_path, strerror(errno));
+			goto do_return;
+		}
+
+		path = malloc(st.st_size + 1);
+		if (path == NULL)
+			goto do_return;
+
+		name_size = readlink(proc_path, path, st.st_size + 1);
+		if (name_size == -1) {
+			asprintf(&path, "<Could not translate file descriptor to file name: %s: Failed readlink(): %s>",
+					proc_path, strerror(errno));
+			goto do_return;
+		}
+	} while (name_size > st.st_size);
+
+do_return:
+	free(proc_path);
+	return path;
+}
 
 static void logged_mount(const char *source, const char *target,
 			const char *fstype, const char *options)
@@ -63,39 +101,43 @@ static void logged_mkdir(const char *path)
 	info("%s: Created directory\n", path);
 }
 
+static int string_in_list(const char *str, const char * const *list)
+{
+	for (; *list != NULL; list++)
+		if (strcmp(str, *list) == 0)
+			return 1;
+
+	return 0;
+}
+
+
 /*
  * fd - Opened directory file descriptor, will be closed by this function.
- * dirname - Name of directory to be used by error messages.
- * types - If non-zero: Only check for indicated file types.
+ * entries - NULL terminated list of pointers to strings, where each string
+ *           is a name of a directory entry that is expected to _not_ be found.
  */
-static int dir_is_empty_helper(int fd, const char *dirname, mode_t types)
+static int dir_is_empty_helper(int fd, const char * const *entries)
 {
 	struct dirent *d;
 	const int stat_fd = dup(fd);
 	DIR * const dir = fdopendir(fd);
-	int failed = 0;
+	int success = 1;
 
 	if (dir == NULL)
 		fail("%s: Could not open directory for reading: %s\n",
-			dirname, strerror(errno));
+			fd_to_path_alloc(fd), strerror(errno));
 
 	while ((d = readdir(dir)) != NULL) {
 		if ((strcmp(d->d_name, ".") != 0)
 			&& (strcmp(d->d_name, "..") != 0)) {
-			if (types != 0) {
-				struct stat stat;
-
-				if (fstatat(fd, d->d_name, &stat, 0) != 0)
-					fail("%s: Failed stat call on file '%s': %s\n",
-						dirname, d->d_name,
-						strerror(errno));
-
-				if (stat.st_mode & S_IFMT & types) {
-					failed = 1;
-					break;
-				}
-			} else {
-				failed = 1;
+			if (string_in_list(d->d_name, entries)
+				|| (*entries == NULL)) {
+				char *fd_path = fd_to_path_alloc(fd);
+				TRACEF("%s: Directory not empty, found '%s'",
+					fd_path,
+					d->d_name);
+				free(fd_path);
+				success = 0;
 				break;
 			}
 		}
@@ -103,19 +145,19 @@ static int dir_is_empty_helper(int fd, const char *dirname, mode_t types)
 
 	if (closedir(dir) != 0)
 		fail("%s: Failed closing directory: %s\n",
-			dirname, strerror(errno));
+			fd_to_path_alloc(fd), strerror(errno));
 
 	if (close(stat_fd) != 0)
 		fail("%s: Failed closing descriptor: %s\n",
-			dirname, strerror(errno));
+			fd_to_path_alloc(fd), strerror(errno));
 
-	return failed ? 0 : 1;
+	return success;
 }
 
 /*
- * Assert dirctory is empty before mount.
+ * Return true (1) if directory path is empty, or false (0) otherwise.
  */
-static int dir_is_empty(const char *dirname, mode_t types)
+static int dir_is_empty(const char *dirname)
 {
 	const int fd = open(dirname, O_RDONLY | O_DIRECTORY);
 
@@ -123,21 +165,26 @@ static int dir_is_empty(const char *dirname, mode_t types)
 		fail("%s: Failed open directory for reading: %s\n",
 			dirname, strerror(errno));
 
-	return dir_is_empty_helper(fd, dirname, types);
+	return dir_is_empty_helper(fd, NULL);
 }
 
-static int fddir_is_empty(int fd, const char *path, mode_t types)
+/*
+ * Return true (1) if dirctory fd is empty, or false (0) otherwise.
+ */
+static int fddir_is_empty(int fd, const char * const *entries)
 {
 	/* fd might be opened with O_PATH, so a dup() will not do. */
 	const int dirfd = openat(fd, ".", O_RDONLY | O_DIRECTORY);
 
 	if (dirfd < 0)
 		fail("%s: Failed open directory for reading: %s\n",
-			path, strerror(errno));
+			fd_to_path_alloc(fd), strerror(errno));
 
 	/* dirfd is closed by called function. */
-	return dir_is_empty_helper(dirfd, path, types);
+	return dir_is_empty_helper(dirfd, entries);
 }
+
+#define FS_NAME_SIZE 128
 
 /*
  * Returns an opened file descriptor for cpuset root directory.
@@ -149,7 +196,7 @@ static int cpuset_root(void)
 	static int fd = -1;
 	FILE *file;
 	const int saved_errno = errno;
-	char match[3][16];
+	char match[4][FS_NAME_SIZE];
 	int nr_matches;
 	int found_cpuset = 0;
 	int found_cgroup = 0;
@@ -164,7 +211,7 @@ static int cpuset_root(void)
 
 	/* Make sure cpuset exists as a file system type */
 	errno = 0;
-	while ((nr_matches = fscanf(file, "%" STRSTR(sizeof (match[0])) "s %" STRSTR(sizeof (match[1])) "s\n", match[0], match[1])) > 0) {
+	while ((nr_matches = fscanf(file, "%" STRSTR(FS_NAME_SIZE) "s %" STRSTR(FS_NAME_SIZE) "s ", match[0], match[1])) > 0) {
 		/*
 		 * File syntax: [dev]\t[fs]
 		 * Since dev is optional, only compare the last match.
@@ -175,7 +222,7 @@ static int cpuset_root(void)
 
 	if (nr_matches <= 0) {
 		if (errno == 0)
-			fail("Could not find cpuset support in the kernel\n");
+			fail("Could not find cpuset file system support in the kernel\n");
 		else
 			fail("%s: Error when reading file: %s\n",
 				PROCFS_FILESYSTEMS, strerror(errno));
@@ -194,8 +241,8 @@ static int cpuset_root(void)
 			PROCFS_MOUNTS, strerror(errno));
 
 	errno = 0;
-	while ((nr_matches = fscanf(file, "%" STRSTR(sizeof (match[0])) "s %" STRSTR(sizeof (match[1])) "s %" STRSTR(sizeof (match[2])) "s\n", match[0], match[1], match[2])) > 0) {
-		if (nr_matches != 3)
+	while ((nr_matches = fscanf(file, "%" STRSTR(FS_NAME_SIZE) "s %" STRSTR(FS_NAME_SIZE) "s %" STRSTR(FS_NAME_SIZE) "s %" STRSTR(FS_NAME_SIZE) "s %*[^\n] ", match[0], match[1], match[2], match[3])) > 0) {
+		if (nr_matches != 4)
 			/* Not enough information found for this entry */
 			continue;
 
@@ -230,7 +277,7 @@ static int cpuset_root(void)
 	if (!found_cgroup) {
 		/* Only mount if dir is empty, or else files will
 		 * disappear causing unexpected results. */
-		if (!dir_is_empty(CGROUP_ROOT, 0))
+		if (!dir_is_empty(CGROUP_ROOT))
 			fail("%s: Directory not empty, mount aborted\n",
 				CGROUP_ROOT);
 
@@ -255,16 +302,17 @@ static int cpuset_root(void)
 	return fd;
 }
 
+static int partition_fd[2] = { -1, -1};
+
 static int cpuset_partition_root(enum CpufsPartition partition)
 {
-	static int partition_fd[2] = { -1, -1};
 	int fd_root;
 
 	if (partition_fd[partition] != -1)
 		return partition_fd[partition];
 
 	fd_root = cpuset_root();
-	if (mkdirat(partition_fd[partition], partition_name[partition], 0777)
+	if (mkdirat(fd_root, partition_name[partition], 0777)
 		!= 0)
 		fail("%s/%s: Failed creating directory: %s\n",
 			CGROUP_CPUSET_ROOT,
@@ -280,43 +328,99 @@ static int cpuset_partition_root(enum CpufsPartition partition)
 	return partition_fd[partition];
 }
 
+static void save_old_content(int fd, FILE *dest)
+{
+	FILE * const stream = fdopen(dup(fd), "r");
+	char *buf;
+	size_t str_len;
+	off_t file_size;
+
+	if (stream == NULL)
+		fail("%s: Failed fdopen(): %s\n",
+			fd_to_path_alloc(fd),
+			strerror(errno));
+
+	/* Seek to end of file to determine file size */
+	file_size = lseek(fd, SEEK_END, 0);
+
+	/* Rewind file */
+	lseek(fd, SEEK_SET, 0);
+
+	buf = malloc(file_size + 1);
+	if (buf == NULL)
+		fail("Out of memory allocating %zu bytes\n",
+			 + 1);
+
+	if (fgets(buf, file_size + 1, stream) == NULL) {
+		if (ferror(stream))
+			fail("%s: Failed fgets(): %s\n",
+				fd_to_path_alloc(fd),
+				strerror(errno));
+		else
+			fail("%s: Failed fgets(): File unexpectedly empty\n",
+				fd_to_path_alloc(fd));
+	}
+
+	/* Remove trailing newline, if there is one */
+	str_len = strlen(buf);
+	if (buf[str_len-1] == '\n')
+		buf[str_len-1] = '\0';
+
+	if (fputs(buf, dest) == EOF)
+		fail("%s: Failed fputs(): %s\n",
+			fd_to_path_alloc(fileno(dest)),
+			strerror(errno));
+
+	if (fclose(stream) == EOF)
+		fail("%s: Failed fclose(): %s\n",
+			fd_to_path_alloc(fd),
+			strerror(errno));
+}
+
 /*
  * Public functions
+ * For descriptions of these functions look in partrt.h
  */
 
 int cpuset_is_empty(void)
 {
-	return fddir_is_empty(cpuset_root(), CGROUP_CPUSET_ROOT, S_IFDIR);
+	return fddir_is_empty(cpuset_root(), partition_name);
 }
 
 void cpuset_write(enum CpufsPartition partition, const char *file_name,
-		const char *value)
+		const char *value, FILE *value_log)
 {
-	int fd_root = cpuset_partition_root(partition);
-	int fd = openat(fd_root, file_name, O_WRONLY);
+	const int fd_root = cpuset_partition_root(partition);
+	const int fd = openat(fd_root, file_name,
+			(value_log == NULL) ? O_WRONLY : O_RDWR);
 	const ssize_t bytes_to_write = strlen(value);
 	ssize_t bytes_written;
 
+	TRACEF("Writing '%s' to %s partition\n",
+		value,
+		(partition == partition_rt) ? "rt" : "nrt");
+
+	info("fd=%d\n", fd);
+
 	if (fd < 0)
-		fail("%s/%s/%s: Failed to open file for writing: %s\n",
+		fail("%s/%s/%s: Failed to open file: %s\n",
 			CGROUP_CPUSET_ROOT,
 			partition_name[partition],
 			file_name,
 			strerror(errno));
 
+	if (value_log != NULL)
+		save_old_content(fd, value_log);
+
 	bytes_written = write(fd, value, bytes_to_write);
 	if (bytes_written != bytes_to_write) {
 		if (bytes_written == -1)
-			fail("%s/%s/%s: Failed to write to file: %s\n",
-				CGROUP_CPUSET_ROOT,
-				partition_name[partition],
-				file_name,
+			fail("%s: Failed to write to file: %s\n",
+				fd_to_path_alloc(fd),
 				strerror(errno));
 		else
-			fail("%s/%s/%s: Failed to write to file: %zd bytes written, expected %zd bytes\n",
-				CGROUP_CPUSET_ROOT,
-				partition_name[partition],
-				file_name,
+			fail("%s: Failed to write to file: %zd bytes written, expected %zd bytes\n",
+				fd_to_path_alloc(fd),
 				bytes_written,
 				bytes_to_write);
 	}
@@ -329,3 +433,27 @@ void cpuset_write(enum CpufsPartition partition, const char *file_name,
 			strerror(errno));
 }
 
+void cpuset_partition_unlink(void)
+{
+	const int root = cpuset_root();
+	int idx;
+
+	for (idx = 0; idx < 2; idx++) {
+		if ((faccessat(root, partition_name[idx], F_OK, 0) == 0) &&
+			(unlinkat(root, partition_name[idx], AT_REMOVEDIR)
+				== -1))
+			fail("%s/%s: Failed unlink(): %s\n",
+				fd_to_path_alloc(root),
+				partition_name[idx],
+				strerror(errno));
+
+		if ((partition_fd[idx] != -1)
+			&& (close(partition_fd[idx]) == -1))
+			fail("%s/%s: Failed close(): %s",
+				fd_to_path_alloc(root),
+				partition_name[idx],
+				strerror(errno));
+
+		partition_fd[idx] = -1;
+	}
+}
