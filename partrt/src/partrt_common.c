@@ -34,9 +34,11 @@
 int option_debug = 0;
 int option_verbose = 0;
 
-void fail(const char *format, ...)
+void std_fail(const char *format, ...)
 {
 	va_list va;
+
+	fflush(stdout);
 
 	va_start(va, format);
 	vfprintf(stdout, format, va);
@@ -45,7 +47,7 @@ void fail(const char *format, ...)
 	exit(EXIT_FAILURE);
 }
 
-void info(const char *format, ...)
+void std_info(const char *format, ...)
 {
 	va_list va;
 
@@ -56,7 +58,7 @@ void info(const char *format, ...)
 	va_end(va);
 }
 
-void debug(const char *format, ...)
+void std_debug(const char *format, ...)
 {
 	va_list va;
 
