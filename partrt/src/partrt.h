@@ -34,19 +34,19 @@ extern unsigned long long option_to_ul(const char *str, unsigned long min,
 #  define fail(fmt, ...)			\
 	do {					\
 	    tracef("Fail: "  __FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt, __func__, ##__VA_ARGS__); \
-	    std_fail(fmt, ##__VA_ARGS__);	\
+	    std_fail(fmt "\n", ##__VA_ARGS__);	\
 	} while (0)
 
 #  define info(fmt, ...)			\
 	do {					\
 	    tracef("Info: "  __FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt, __func__, ##__VA_ARGS__); \
-	    std_info(fmt, ##__VA_ARGS__);	\
+	    std_info(fmt "\n", ##__VA_ARGS__);	\
 	} while (0)
 
 #  define debug(fmt, ...)			\
 	do {					\
 	    tracef("Debug: "  __FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt, __func__, ##__VA_ARGS__); \
-	    std_debug(fmt, ##__VA_ARGS__);	\
+	    std_debug(fmt "\n", ##__VA_ARGS__);	\
 	} while (0)
 
 #else

@@ -176,7 +176,7 @@ START_TEST(test_cpumask_alloc_from_mask_2)
 }
 END_TEST
 
-START_TEST(test_cpumask_list)
+START_TEST(test_cpumask_list_1)
 {
 	static const char list[] = "1-2,4-7,9";
 	cpu_set_t * const set = cpumask_alloc_from_list(list);
@@ -188,6 +188,28 @@ START_TEST(test_cpumask_list)
 
 	cpumask_free(set);
 	free(returned_list);
+}
+END_TEST
+
+START_TEST(test_cpumask_list_2)
+{
+	char *list;
+	cpu_set_t *set;
+	char *returned_list;
+
+	asprintf(&list, "%d", configured_nr_cpus - 1);
+	ck_assert(list != NULL);
+	set = cpumask_alloc_from_list(list);
+	returned_list = cpumask_list(set);
+	ck_assert(returned_list != NULL);
+
+	ck_assert_msg(strcmp(list, returned_list) == 0,
+		"list='%s' returned_list='%s'",
+		list, returned_list);
+
+	cpumask_free(set);
+	free(returned_list);
+	free(list);
 }
 END_TEST
 
@@ -208,7 +230,8 @@ suite_cpumask(void)
 	tcase_add_test(tc_core, test_cpumask_alloc_complement);
 	tcase_add_test(tc_core, test_cpumask_alloc_from_mask_1);
 	tcase_add_test(tc_core, test_cpumask_alloc_from_mask_2);
-	tcase_add_test(tc_core, test_cpumask_list);
+	tcase_add_test(tc_core, test_cpumask_list_1);
+	tcase_add_test(tc_core, test_cpumask_list_2);
 	suite_add_tcase(s, tc_core);
 
 	return s;

@@ -40,7 +40,7 @@ static void usage_create(void)
 	     "cmd-options:\n"
 	     "-a            Disable writeback workqueue NUMA affinity\n"
 	     "-b            Do not migrate block workqueue when creating a new\n"
-	     "              partition"
+	     "              partition\n"
 	     "-c            Do not disable machine check (x86)\n"
 	     "-d            Do not defer ticks when creating a new partition\n"
 	     "-h            Show this help text and exit.\n"
@@ -118,20 +118,20 @@ int cmd_create(int argc, char *argv[])
 		case '?':
 			exit(1);
 		default:
-			fail("Internal error: '-%c': Switch accepted but not implemented\n",
+			fail("Internal error: '-%c': Switch accepted but not implemented",
 				c);
 		}
 	}
 
 	if ((rt_set == NULL) && !numa_partition) {
 		if (optind >= argc)
-			fail("partrt create: No CPU configured for RT partition, nothing to do\n");
+			fail("partrt create: No CPU configured for RT partition, nothing to do");
 		rt_set = cpumask_alloc_from_mask(argv[optind]);
 		optind++;
 	}
 
 	if (optind < argc)
-		fail("partrt create: Too many parameters given. Use 'partrt create --help' for help.\n");
+		fail("partrt create: Too many parameters given. Use 'partrt create --help' for help.");
 
 	nrt_set = cpumask_alloc_complement(rt_set);
 
@@ -140,8 +140,8 @@ int cmd_create(int argc, char *argv[])
 	rt_list = cpumask_list(rt_set);
 	nrt_list = cpumask_list(nrt_set);
 
-	info("RT partition : mask: %s, list: %s\n", rt_mask, rt_list);
-	info("nRT partition: mask: %s, list: %s\n", nrt_mask, nrt_list);
+	info("RT partition : mask: %s, list: %s", rt_mask, rt_list);
+	info("nRT partition: mask: %s, list: %s", nrt_mask, nrt_list);
 
 	/* Check if there already are partitions done already by checking
 	 * for sub-directories in cpuset. */

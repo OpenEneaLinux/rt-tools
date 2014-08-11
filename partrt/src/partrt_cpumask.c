@@ -15,8 +15,8 @@ int cpumask_nr_cpus(void)
 	if (nr_cpus == 0) {
 		nr_cpus = get_nprocs_conf();
 		if (nr_cpus <= 0)
-			fail("Could not determine number of CPUs\n");
-		info("%d CPUs configured in kernel\n", nr_cpus);
+			fail("Could not determine number of CPUs");
+		info("%d CPUs configured in kernel", nr_cpus);
 	}
 
 	return nr_cpus;
@@ -26,7 +26,7 @@ cpu_set_t *cpumask_alloc_zero(void)
 {
 	cpu_set_t * const set = CPU_ALLOC(cpumask_nr_cpus());
 	if (set == NULL)
-		fail("Out of memory allocating CPU mask for %d CPUs\n",
+		fail("Out of memory allocating CPU mask for %d CPUs",
 			cpumask_nr_cpus());
 
 	CPU_ZERO_S(CPU_ALLOC_SIZE(cpumask_nr_cpus()), set);
@@ -42,7 +42,7 @@ void cpumask_free(cpu_set_t *set)
 void cpumask_set(int cpu, cpu_set_t *set)
 {
 	if (cpu >= cpumask_nr_cpus())
-		fail("Internal error: Illegal use of cpumask_set(%d,...): Only %d CPUs in the set\n",
+		fail("Internal error: Illegal use of cpumask_set(%d,...): Only %d CPUs in the set",
 			cpu, cpumask_nr_cpus());
 	CPU_SET_S(cpu, CPU_ALLOC_SIZE(cpumask_nr_cpus()), set);
 }
@@ -77,7 +77,7 @@ char *cpumask_hex(const cpu_set_t *set)
 	char *str = malloc(str_size);
 
 	if (str == NULL)
-		fail("Out of memory allocating %zu bytes\n", str_size);
+		fail("Out of memory allocating %zu bytes", str_size);
 
 	curr = str + str_size - 1;
 	*curr = '\0';
@@ -113,7 +113,7 @@ static int cpumask_list_write(size_t curr_idx, size_t size_alloced,
 				first_cpu, last_cpu);
 
 	if (status < 0)
-		fail("cpumask_list_write(): Internal error: snprintf() returned error\n");
+		fail("cpumask_list_write(): Internal error: snprintf() returned error");
 
 	return status;
 }
@@ -128,7 +128,7 @@ char *cpumask_list(const cpu_set_t *set)
 	int first_cpu = -1;
 	int last_cpu = -1;
 
-	for (cpu = 0; cpu < nr_cpus; cpu++) {
+	for (cpu = 0; cpu <= nr_cpus; cpu++) {
 		int bytes_needed;
 
 		if (first_cpu == -1) {
@@ -144,15 +144,17 @@ char *cpumask_list(const cpu_set_t *set)
 		bytes_needed = cpumask_list_write(
 			curr_idx, size_alloced, first_cpu, last_cpu, str);
 		if (bytes_needed >= (size_alloced - curr_idx)) {
-			str = realloc(
-				str, size_alloced + bytes_needed + 1);
+			str = realloc(str, size_alloced + bytes_needed + 1);
+			if (str == NULL)
+				fail("Out of memory allocating %d bytes",
+					size_alloced + bytes_needed + 1);
 			size_alloced += bytes_needed + 1;
 			bytes_needed = cpumask_list_write(
 				curr_idx, size_alloced, first_cpu,
 				last_cpu, str);
 
 			if (bytes_needed >= (size_alloced - curr_idx))
-				fail("cpumask_list(): Internal error: Did not allocate enough. bytes_needed=%d, size_alloced=%d, curr_idx=%d\n",
+				fail("cpumask_list(): Internal error: Did not allocate enough. bytes_needed=%d, size_alloced=%d, curr_idx=%d",
 					bytes_needed, size_alloced, curr_idx);
 		}
 
@@ -160,6 +162,12 @@ char *cpumask_list(const cpu_set_t *set)
 		first_cpu = -1;
 	}
 
+	if (str == NULL) {
+		str = malloc(1);
+		if (str == NULL)
+			fail("Out of memory allocating 2 bytes");
+		str[0] = '\0';
+	}
 	return str;
 }
 
@@ -176,18 +184,18 @@ cpu_set_t *cpumask_alloc_from_list(const char *list)
 
 		range_first = strtol(list, &endptr, 0);
 		if (endptr == list)
-			fail("%s: Malformed CPU list\n", original_list);
+			fail("%s: Malformed CPU list", original_list);
 		if (range_first > INT_MAX)
-			fail("%s: %ld is out of range\n", original_list,
+			fail("%s: %ld is out of range", original_list,
 				range_first);
 		list = endptr;
 		if (*list == '-') {
 			list++;
 			range_last = strtol(list, &endptr, 0);
 			if (endptr == list)
-				fail("%s: Malformed CPU list\n", original_list);
+				fail("%s: Malformed CPU list", original_list);
 			if (range_last > INT_MAX)
-				fail("%s: %ld is out of range\n",
+				fail("%s: %ld is out of range",
 					original_list, range_last);
 			list = endptr;
 		} else {
@@ -244,12 +252,12 @@ cpu_set_t *cpumask_alloc_from_mask(const char *mask)
 		else if ((*curr >= 'A') && (*curr <= 'F'))
 			val = *curr - 'A' + 10;
 		else
-			fail("%s: Character '%c' is not legal in hexadecimal mask\n", mask, *curr);
+			fail("%s: Character '%c' is not legal in hexadecimal mask", mask, *curr);
 
 		for (; bit < (starting_bit + 4); bit++) {
 			if (val & (1 << (bit - starting_bit))) {
 				if (bit >= nr_cpus)
-					fail("%s: Illegal mask, only %d cpus detected\n",
+					fail("%s: Illegal mask, only %d cpus detected",
 						mask, nr_cpus);
 				cpumask_set(bit, set);
 			}

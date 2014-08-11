@@ -269,7 +269,7 @@ int main(int argc, char *argv[])
 			rt_partition = optarg;
 			break;
 		case 'v':
-			option_verbose = 1;
+			option_verbose++;
 			break;
 		case 'x':
 			option_debug = 1;
