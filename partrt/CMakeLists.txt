@@ -14,16 +14,6 @@ set(CTEST_OUTPUT_ON_FAILURE ON)
 set (partrt_VERSION_MAJOR 1)
 set (partrt_VERSION_MINOR 0)
 
-# Add the binary tree to the search path for include files
-# so that we will find TutorialConfig.h
-include_directories("${PROJECT_BINARY_DIR}")
-
-# Create config.h file based on CMake variables and config.h.in
-configure_file (
-  "${PROJECT_SOURCE_DIR}/config.h.in"
-  "${PROJECT_BINARY_DIR}/config.h"
-  )
-
 # Find pkg-config tool to be used when searching for check library
 # See http://www.cmake.org/cmake/help/v2.8.2/cmake.html#module:FindPkgConfig
 find_package(PkgConfig)
@@ -48,9 +38,6 @@ macro (check_optional_module var name)
 
   # If check unit test framework is found
   if (${var}_FOUND)
-    # Path to config.h
-    include_directories("${PROJECT_BINARY_DIR}")
-
     # Handle ${var}_INCLUDE_DIRS
     include_directories(${${var}_INCLUDE_DIRS})
 

@@ -14,9 +14,6 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
 
 # If check unit test framework is found
 if (CHECK_FOUND)
-  # Path to config.h
-  include_directories("${PROJECT_BINARY_DIR}")
-
   message(STATUS "Building unit tests")
 
   macro (define_test name)
