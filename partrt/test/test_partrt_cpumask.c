@@ -176,6 +176,21 @@ START_TEST(test_cpumask_alloc_from_mask_2)
 }
 END_TEST
 
+START_TEST(test_cpumask_alloc_from_u32_list)
+{
+	const char *mlist = "00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000003";
+	cpu_set_t *set;
+
+	configured_nr_cpus = 2;
+	set = cpumask_alloc_from_u32_list(mlist);
+
+	ck_assert(cpumask_isset(0, set));
+	ck_assert(cpumask_isset(1, set));
+
+	cpumask_free(set);
+}
+END_TEST
+
 START_TEST(test_cpumask_list_1)
 {
 	static const char list[] = "1-2,4-7,9";
@@ -213,6 +228,33 @@ START_TEST(test_cpumask_list_2)
 }
 END_TEST
 
+START_TEST(test_cpumask_cpu_count)
+{
+	cpu_set_t * const set = cpumask_alloc_zero();
+	int count;
+
+	count = cpumask_cpu_count(set);
+	ck_assert_msg(count == 0, "count=%d, expected 0", count);
+
+	cpumask_set(0, set);
+	count = cpumask_cpu_count(set);
+	ck_assert_msg(count == 1,
+		"count=%d, expected 1", count);
+
+	cpumask_set(configured_nr_cpus >> 2, set);
+	count = cpumask_cpu_count(set);
+	ck_assert_msg(count == 2,
+		"count=%d, expected 2", count);
+
+	cpumask_set(configured_nr_cpus - 1, set);
+	count = cpumask_cpu_count(set);
+	ck_assert_msg(count == 3,
+		"count=%d, expected 3", count);
+
+	cpumask_free(set);
+}
+END_TEST
+
 Suite *
 suite_cpumask(void)
 {
@@ -230,8 +272,10 @@ suite_cpumask(void)
 	tcase_add_test(tc_core, test_cpumask_alloc_complement);
 	tcase_add_test(tc_core, test_cpumask_alloc_from_mask_1);
 	tcase_add_test(tc_core, test_cpumask_alloc_from_mask_2);
+	tcase_add_test(tc_core, test_cpumask_alloc_from_u32_list);
 	tcase_add_test(tc_core, test_cpumask_list_1);
 	tcase_add_test(tc_core, test_cpumask_list_2);
+	tcase_add_test(tc_core, test_cpumask_cpu_count);
 	suite_add_tcase(s, tc_core);
 
 	return s;

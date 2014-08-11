@@ -68,6 +68,11 @@ size_t cpumask_alloc_size(void)
 	return CPU_ALLOC_SIZE(cpumask_nr_cpus());
 }
 
+size_t cpumask_cpu_count(const cpu_set_t *set)
+{
+	return CPU_COUNT_S(CPU_ALLOC_SIZE(cpumask_nr_cpus()), set);
+}
+
 char *cpumask_hex(const cpu_set_t *set)
 {
 	char *curr;
@@ -227,23 +232,24 @@ cpu_set_t *cpumask_alloc_complement(const cpu_set_t *set)
 	return comp_set;
 }
 
-cpu_set_t *cpumask_alloc_from_mask(const char *mask)
+static cpu_set_t *alloc_from_mask(const char *mask, char ignore_char)
 {
 	const int nr_cpus = cpumask_nr_cpus();
 	cpu_set_t * const set = cpumask_alloc_zero();
 	const char *curr;
 	int bit = 0;
 
-	if (strncmp(mask, "0x", 2) == 0) {
-		TRACEF("Skipped 0x");
+	if (strncmp(mask, "0x", 2) == 0)
 		mask += 2;
-	}
 
 	for (curr = mask + strlen(mask) - 1;
 	     curr >= mask;
 	     curr--) {
 		int val;
 		const int starting_bit = bit;
+
+		if ((ignore_char != '\0') && (*curr == ignore_char))
+			continue;
 
 		if ((*curr >= '0') && (*curr <= '9'))
 			val = *curr - '0';
@@ -265,4 +271,14 @@ cpu_set_t *cpumask_alloc_from_mask(const char *mask)
 	}
 
 	return set;
+}
+
+cpu_set_t *cpumask_alloc_from_mask(const char *mask)
+{
+	return alloc_from_mask(mask, '\0');
+}
+
+cpu_set_t *cpumask_alloc_from_u32_list(const char *mlist)
+{
+	return alloc_from_mask(mlist, ',');
 }
