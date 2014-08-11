@@ -1,4 +1,4 @@
-add_executable(partrt partrt.c partrt_common.c partrt_create.c partrt_cpumask.c partrt_cpuset.c)
+add_executable(partrt partrt.c partrt_common.c partrt_create.c partrt_cpumask.c partrt_file.c partrt_cpuset.c)
 
 if (LTTNG_UST_FOUND)
   target_link_libraries(partrt ${LTTNG_UST_LIBRARIES})

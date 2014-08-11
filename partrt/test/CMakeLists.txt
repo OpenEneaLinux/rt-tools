@@ -17,7 +17,7 @@ if (CHECK_FOUND)
   message(STATUS "Building unit tests")
 
   macro (define_test name)
-    add_executable(${name} ${name}.c ../src/partrt_common.c)
+    add_executable(${name} ${name}.c ../src/partrt_common.c ../src/partrt_file.c)
     target_link_libraries(${name} ${CHECK_LIBRARIES})
     if (LTTNG_UST_FOUND)
       target_link_libraries(${name} ${LTTNG_UST_LIBRARIES})

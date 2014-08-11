@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013,2014 by Enea Software AB
+ * Copyright (c) 2014 by Enea Software AB
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -49,40 +49,6 @@
 
 static const char * const partition_name[] = { "rt", "nrt", NULL };
 
-char *fd_to_path_alloc(int fd)
-{
-	struct stat st;
-	char *path = NULL;
-	ssize_t name_size;
-	char *proc_path = NULL;
-
-	if (asprintf(&proc_path, "/proc/self/fd/%d", fd) == -1)
-		goto do_return;
-
-	do {
-		if (lstat(proc_path, &st) == -1) {
-			asprintf(&path, "<Could not translate file descriptor to file name: %s: Failed stat(): %s>",
-				proc_path, strerror(errno));
-			goto do_return;
-		}
-
-		path = malloc(st.st_size + 1);
-		if (path == NULL)
-			goto do_return;
-
-		name_size = readlink(proc_path, path, st.st_size + 1);
-		if (name_size == -1) {
-			asprintf(&path, "<Could not translate file descriptor to file name: %s: Failed readlink(): %s>",
-					proc_path, strerror(errno));
-			goto do_return;
-		}
-	} while (name_size > st.st_size);
-
-do_return:
-	free(proc_path);
-	return path;
-}
-
 static void logged_mount(const char *source, const char *target,
 			const char *fstype, const char *options)
 {
@@ -125,14 +91,14 @@ static int dir_is_empty_helper(int fd, const char * const *entries)
 
 	if (dir == NULL)
 		fail("%s: Could not open directory for reading: %s",
-			fd_to_path_alloc(fd), strerror(errno));
+			file_fd_to_path_alloc(fd), strerror(errno));
 
 	while ((d = readdir(dir)) != NULL) {
 		if ((strcmp(d->d_name, ".") != 0)
 			&& (strcmp(d->d_name, "..") != 0)) {
 			if (string_in_list(d->d_name, entries)
 				|| (*entries == NULL)) {
-				char *fd_path = fd_to_path_alloc(fd);
+				char *fd_path = file_fd_to_path_alloc(fd);
 				TRACEF("%s: Directory not empty, found '%s'",
 					fd_path,
 					d->d_name);
@@ -145,11 +111,11 @@ static int dir_is_empty_helper(int fd, const char * const *entries)
 
 	if (closedir(dir) != 0)
 		fail("%s: Failed closing directory: %s",
-			fd_to_path_alloc(fd), strerror(errno));
+			file_fd_to_path_alloc(fd), strerror(errno));
 
 	if (close(stat_fd) != 0)
 		fail("%s: Failed closing descriptor: %s",
-			fd_to_path_alloc(fd), strerror(errno));
+			file_fd_to_path_alloc(fd), strerror(errno));
 
 	return success;
 }
@@ -178,7 +144,7 @@ static int fddir_is_empty(int fd, const char * const *entries)
 
 	if (dirfd < 0)
 		fail("%s: Failed open directory for reading: %s",
-			fd_to_path_alloc(fd), strerror(errno));
+			file_fd_to_path_alloc(fd), strerror(errno));
 
 	/* dirfd is closed by called function. */
 	return dir_is_empty_helper(dirfd, entries);
@@ -328,53 +294,23 @@ static int cpuset_partition_root(enum CpufsPartition partition)
 	return partition_fd[partition];
 }
 
-static void save_old_content(int fd, FILE *dest)
+static void save_old_content(int dirfd, const char *file_name, FILE *dest)
 {
-	FILE * const stream = fdopen(dup(fd), "r");
-	char *buf;
-	size_t str_len;
-	off_t file_size;
-
-	if (stream == NULL)
-		fail("%s: Failed fdopen(): %s",
-			fd_to_path_alloc(fd),
-			strerror(errno));
-
-	/* Seek to end of file to determine file size */
-	file_size = lseek(fd, SEEK_END, 0);
-
-	/* Rewind file */
-	lseek(fd, SEEK_SET, 0);
-
-	buf = malloc(file_size + 1);
-	if (buf == NULL)
-		fail("Out of memory allocating %zu bytes",
-			 + 1);
-
-	if (fgets(buf, file_size + 1, stream) == NULL) {
-		if (ferror(stream))
-			fail("%s: Failed fgets(): %s",
-				fd_to_path_alloc(fd),
-				strerror(errno));
-		else
-			fail("%s: Failed fgets(): File unexpectedly empty",
-				fd_to_path_alloc(fd));
-	}
+	char * const buf = file_read_alloc(dirfd, file_name);
+	const size_t buf_len = strlen(buf);
+	char * const file_path = file_fd_to_path_alloc(dirfd);
 
 	/* Remove trailing newline, if there is one */
-	str_len = strlen(buf);
-	if (buf[str_len-1] == '\n')
-		buf[str_len-1] = '\0';
+	if (buf[buf_len-1] == '\n')
+		buf[buf_len-1] = '\0';
 
-	if (fputs(buf, dest) == EOF)
-		fail("%s: Failed fputs(): %s",
-			fd_to_path_alloc(fileno(dest)),
-			strerror(errno));
+	if (fprintf(dest, "%s/%s=%s\n", file_path, file_name, buf) == EOF)
+		fail("%s/%s: Failed fprintf(): %s",
+			file_path, file_name, strerror(errno));
 
-	if (fclose(stream) == EOF)
-		fail("%s: Failed fclose(): %s",
-			fd_to_path_alloc(fd),
-			strerror(errno));
+	debug("%s: %s/%s=%s\n", __func__, file_path, file_name, buf);
+
+	free(file_path);
 }
 
 /*
@@ -410,17 +346,17 @@ void cpuset_write(enum CpufsPartition partition, const char *file_name,
 			strerror(errno));
 
 	if (value_log != NULL)
-		save_old_content(fd, value_log);
+		save_old_content(fd_root, file_name, value_log);
 
 	bytes_written = write(fd, value, bytes_to_write);
 	if (bytes_written != bytes_to_write) {
 		if (bytes_written == -1)
 			fail("%s: Failed to write to file: %s",
-				fd_to_path_alloc(fd),
+				file_fd_to_path_alloc(fd),
 				strerror(errno));
 		else
 			fail("%s: Failed to write to file: %zd bytes written, expected %zd bytes",
-				fd_to_path_alloc(fd),
+				file_fd_to_path_alloc(fd),
 				bytes_written,
 				bytes_to_write);
 	}
@@ -443,14 +379,14 @@ void cpuset_partition_unlink(void)
 			(unlinkat(root, partition_name[idx], AT_REMOVEDIR)
 				== -1))
 			fail("%s/%s: Failed unlink(): %s",
-				fd_to_path_alloc(root),
+				file_fd_to_path_alloc(root),
 				partition_name[idx],
 				strerror(errno));
 
 		if ((partition_fd[idx] != -1)
 			&& (close(partition_fd[idx]) == -1))
 			fail("%s/%s: Failed close(): %s",
-				fd_to_path_alloc(root),
+				file_fd_to_path_alloc(root),
 				partition_name[idx],
 				strerror(errno));
 

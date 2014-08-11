@@ -20,8 +20,9 @@ END_TEST
 
 START_TEST(test_cpuset_write)
 {
-	const char * const test_str = "1";
-	char logged_value[3];
+	static const char * const test_str = "1";
+	static const char * const compare_str = "/sys/fs/cgroup/cpuset/nrt/cpuset.cpus=1\n";
+	char logged_value[64];
 	FILE * const log = tmpfile();
 
 	cpuset_write(partition_nrt, "cpuset.cpus", test_str, NULL);
@@ -31,8 +32,9 @@ START_TEST(test_cpuset_write)
 
 	ck_assert(fgets(logged_value, sizeof (logged_value), log) != NULL);
 
-	ck_assert((logged_value[0] == test_str[0]) &&
-		((logged_value[1] == '\n') || (logged_value[1] == '\0')));
+	ck_assert_msg(strcmp(logged_value, compare_str) == 0,
+		"logged_value: '%s', compare_str: '%s'",
+		logged_value, compare_str);
 }
 END_TEST
 

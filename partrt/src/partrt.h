@@ -115,3 +115,12 @@ extern int cpuset_is_empty(void);
  */
 extern void cpuset_write(enum CpufsPartition partition, const char *file_name,
 			const char *value, FILE *value_log);
+
+
+/*******************************************************************************
+ * partrt_file.c
+ */
+
+extern char *file_fd_to_path_alloc(int fd);
+extern char *file_read_alloc(int dirfd, const char *file);
+
