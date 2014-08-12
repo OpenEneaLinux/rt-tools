@@ -123,4 +123,5 @@ extern void cpuset_write(enum CpufsPartition partition, const char *file_name,
 
 extern char *file_fd_to_path_alloc(int fd);
 extern char *file_read_alloc(int dirfd, const char *file);
+extern char *file_pid_to_name_alloc(pid_t pid);
 

@@ -297,12 +297,7 @@ static int cpuset_partition_root(enum CpufsPartition partition)
 static void save_old_content(int dirfd, const char *file_name, FILE *dest)
 {
 	char * const buf = file_read_alloc(dirfd, file_name);
-	const size_t buf_len = strlen(buf);
 	char * const file_path = file_fd_to_path_alloc(dirfd);
-
-	/* Remove trailing newline, if there is one */
-	if (buf[buf_len-1] == '\n')
-		buf[buf_len-1] = '\0';
 
 	if (fprintf(dest, "%s/%s=%s\n", file_path, file_name, buf) == EOF)
 		fail("%s/%s: Failed fprintf(): %s",

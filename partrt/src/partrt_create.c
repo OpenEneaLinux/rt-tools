@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <limits.h>
 #include <string.h>
+#include <fcntl.h>
 
 static int dry_run = 0;
 
@@ -123,15 +124,28 @@ int cmd_create(int argc, char *argv[])
 		}
 	}
 
-	if ((rt_set == NULL) && !numa_partition) {
-		if (optind >= argc)
-			fail("partrt create: No CPU configured for RT partition, nothing to do");
-		rt_set = cpumask_alloc_from_mask(argv[optind]);
-		optind++;
+	if (numa_partition && (rt_set != NULL))
+		fail("partrt create: Specified both CPU list (-C/--cpu) and numa partition (-n/--numa), these options are mutually exclusive");
+
+	if (rt_set == NULL) {
+		if (numa_partition) {
+			char *file_name;
+			char *buf;
+			asprintf(&file_name, "/sys/devices/system/node/node%d/cpumap", numa_node);
+			buf = file_read_alloc(AT_FDCWD, file_name);
+			rt_set = cpumask_alloc_from_u32_list(buf);
+			free(buf);
+			free(file_name);
+		} else {
+			if (optind >= argc)
+				fail("partrt create: No CPU configured for RT partition, nothing to do");
+			rt_set = cpumask_alloc_from_mask(argv[optind]);
+			optind++;
+		}
 	}
 
 	if (optind < argc)
-		fail("partrt create: Too many parameters given. Use 'partrt create --help' for help.");
+		fail("partrt create: '%s': Too many parameters given. Use 'partrt create --help' for help.", argv[optind]);
 
 	nrt_set = cpumask_alloc_complement(rt_set);
 
@@ -143,10 +157,14 @@ int cmd_create(int argc, char *argv[])
 	info("RT partition : mask: %s, list: %s", rt_mask, rt_list);
 	info("nRT partition: mask: %s, list: %s", nrt_mask, nrt_list);
 
-	/* Check if there already are partitions done already by checking
-	 * for sub-directories in cpuset. */
+	if (cpumask_cpu_count(rt_set) < 1)
+		fail("partrt create: RT partition contains no CPUs");
+
+	if (cpumask_cpu_count(nrt_set) < 1)
+		fail("partrt create: NRT partition contains no CPUs");
+
 	if (!cpuset_is_empty())
-		fail("There are already cpusets/partitions in the system");
+		fail("partrt create: There are already cpusets/partitions in the system, remove them first with 'partrt undo'");
 
 	
 
