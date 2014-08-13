@@ -1,3 +1,34 @@
+/*
+ * Copyright (c) 2014 by Enea Software AB
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of Enea Software AB nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ * This file implements sub-command "create".
+ */
+
 #include "partrt.h"
 
 #include <getopt.h>
@@ -14,11 +45,12 @@ static int migrate_bwq = 1;
 static int disable_machine_check = 1;
 static int defer_ticks = 1;
 static int numa_partition = 0;
-static int numa_node = 0;
+static const char *rt_numa_node = "0";
+/* static const char *nrt_numa_nodes = "0"; */
 static int restart_hotplug = 1;
 static int disable_watchdog = 1;
-static cpu_set_t *rt_set = NULL;
-static cpu_set_t *nrt_set = NULL;
+static struct bitmap_t *rt_set = NULL;
+static struct bitmap_t *nrt_set = NULL;
 static const char *rt_mask = NULL;
 static const char *nrt_mask = NULL;
 static const char *rt_list = NULL;
@@ -63,6 +95,16 @@ static void usage_create(void)
 	exit(0);
 }
 
+#if 0
+static move_task(pid_t pid, const char *partition)
+{
+	const char * const report_name =
+		(partition[0] == '\0') ? "root" : partition;
+
+	cpuset_write();
+}
+#endif
+
 int cmd_create(int argc, char *argv[])
 {
 
@@ -101,8 +143,7 @@ int cmd_create(int argc, char *argv[])
 			break;
 		case 'n':
 			numa_partition = 1;
-			numa_node = (int) option_to_ul(optarg, 0, INT_MAX,
-						       "--numa");
+			rt_numa_node = optarg;
 			break;
 		case 'r':
 			restart_hotplug = 0;
@@ -111,7 +152,7 @@ int cmd_create(int argc, char *argv[])
 			disable_watchdog = 0;
 			break;
 		case 'C':
-			rt_set = cpumask_alloc_from_list(optarg);
+			rt_set = bitmap_alloc_from_list(optarg, nr_cpus());
 			break;
 		case 'D':
 			dry_run = 1;
@@ -131,15 +172,15 @@ int cmd_create(int argc, char *argv[])
 		if (numa_partition) {
 			char *file_name;
 			char *buf;
-			asprintf(&file_name, "/sys/devices/system/node/node%d/cpumap", numa_node);
+			asprintf(&file_name, "/sys/devices/system/node/node%s/cpumap", rt_numa_node);
 			buf = file_read_alloc(AT_FDCWD, file_name);
-			rt_set = cpumask_alloc_from_u32_list(buf);
+			rt_set = bitmap_alloc_from_u32_list(buf, nr_cpus());
 			free(buf);
 			free(file_name);
 		} else {
 			if (optind >= argc)
 				fail("partrt create: No CPU configured for RT partition, nothing to do");
-			rt_set = cpumask_alloc_from_mask(argv[optind]);
+			rt_set = bitmap_alloc_from_mask(argv[optind], nr_cpus());
 			optind++;
 		}
 	}
@@ -147,24 +188,46 @@ int cmd_create(int argc, char *argv[])
 	if (optind < argc)
 		fail("partrt create: '%s': Too many parameters given. Use 'partrt create --help' for help.", argv[optind]);
 
-	nrt_set = cpumask_alloc_complement(rt_set);
+	nrt_set = bitmap_alloc_complement(rt_set);
 
-	rt_mask = cpumask_hex(rt_set);
-	nrt_mask = cpumask_hex(nrt_set);
-	rt_list = cpumask_list(rt_set);
-	nrt_list = cpumask_list(nrt_set);
+	rt_mask = bitmap_hex(rt_set);
+	nrt_mask = bitmap_hex(nrt_set);
+	rt_list = bitmap_list(rt_set);
+	nrt_list = bitmap_list(nrt_set);
 
 	info("RT partition : mask: %s, list: %s", rt_mask, rt_list);
 	info("nRT partition: mask: %s, list: %s", nrt_mask, nrt_list);
 
-	if (cpumask_cpu_count(rt_set) < 1)
+	if (bitmap_bit_count(rt_set) < 1)
 		fail("partrt create: RT partition contains no CPUs");
 
-	if (cpumask_cpu_count(nrt_set) < 1)
+	if (bitmap_bit_count(nrt_set) < 1)
 		fail("partrt create: NRT partition contains no CPUs");
 
 	if (!cpuset_is_empty())
 		fail("partrt create: There are already cpusets/partitions in the system, remove them first with 'partrt undo'");
+
+	/*
+	 * Configure RT partition
+	 */
+
+	/* Allocate CPUs */
+	cpuset_write(partition_rt, "cpuset.cpus", rt_list, NULL);
+
+	/* Make CPU list exclusive to RT partition */
+	cpuset_write(partition_rt, "cpuset.cpu_exclusive", "1", NULL);
+
+	/* Handle NUMA */
+	if (numa_partition) {
+		cpuset_write(partition_rt, "cpuset.mems", rt_numa_node, NULL);
+		cpuset_write(partition_rt, "cpuset.mem_exclusive", "1", NULL);
+	} else{
+		cpuset_write(partition_rt, "cpuset.mems", "0", NULL);
+	}
+
+	/*
+	 * Configure nRT partition
+	 */
 
 	
 

@@ -24,12 +24,17 @@
  */
 extern const char *nrt_partition;
 extern const char *rt_partition;
+extern int option_debug;
+extern int option_verbose;
+
 extern void std_fail(const char *format, ...);
 extern void std_info(const char *format, ...);
 extern void std_debug(const char *format, ...);
 extern void *checked_malloc(size_t size);
+extern void *checked_realloc(void *old_alloc, size_t new_size);
 extern unsigned long long option_to_ul(const char *str, unsigned long min,
 				unsigned long max, const char *errprefix);
+extern int nr_cpus(void);
 
 #ifdef HAVE_LTTNG
 
@@ -66,35 +71,38 @@ extern unsigned long long option_to_ul(const char *str, unsigned long min,
 extern int cmd_create(int argc, char *argv[]);
 
 /*******************************************************************************
- * partrt_create.c
+ * partrt_undo.c
  */
 
 extern int cmd_undo(int argc, char *argv[]);
 
 /*******************************************************************************
- * partrt_cpumask.c
+ * partrt_bitmap.c
  */
 
-extern int cpumask_nr_cpus(void);
-extern cpu_set_t *cpumask_alloc_zero(void);
-extern void cpumask_free(cpu_set_t *set);
-extern void cpumask_set(int cpu, cpu_set_t *set);
-extern cpu_set_t *cpumask_alloc_set(int cpu);
-extern int cpumask_isset(int cpu, const cpu_set_t *set);
-extern size_t cpumask_alloc_size(void);
-extern size_t cpumask_cpu_count(const cpu_set_t *set);
-extern char *cpumask_hex(const cpu_set_t *set);
-extern char *cpumask_list(const cpu_set_t *set);
-extern cpu_set_t *cpumask_alloc_from_list(const char *list);
-extern cpu_set_t *cpumask_alloc_complement(const cpu_set_t *set);
-extern cpu_set_t *cpumask_alloc_from_mask(const char *mask);
+struct bitmap_t;
+
+extern struct bitmap_t *bitmap_alloc_zero(size_t max_size_bits);
+extern void bitmap_free(struct bitmap_t *set);
+extern void bitmap_set(int cpu, struct bitmap_t *set);
+extern struct bitmap_t *bitmap_alloc_set(int cpu, size_t max_size_bits);
+extern int bitmap_isset(int cpu, const struct bitmap_t *set);
+extern size_t bitmap_bit_count(const struct bitmap_t *set);
+extern char *bitmap_hex(const struct bitmap_t *set);
+extern char *bitmap_list(const struct bitmap_t *set);
+extern struct bitmap_t *bitmap_alloc_from_list(const char *list,
+					size_t max_size_bits);
+extern struct bitmap_t *bitmap_alloc_complement(const struct bitmap_t *set);
+extern struct bitmap_t *bitmap_alloc_from_mask(const char *mask,
+					size_t max_size_bits);
 
 /*
- * Create a cpu_set_t from a string containing a list of hexadecimal
+ * Create a bitmap_t from a string containing a list of hexadecimal
  * unsigned 32-bit values separated by commas. This format is used by some
  * files in the sysfs.
  */
-extern cpu_set_t *cpumask_alloc_from_u32_list(const char *mlist);
+extern struct bitmap_t *bitmap_alloc_from_u32_list(const char *mlist,
+						size_t max_size_bits);
 
 /*******************************************************************************
  * partrt_cpuset.c

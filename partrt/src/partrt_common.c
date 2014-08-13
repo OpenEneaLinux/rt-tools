@@ -30,6 +30,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/sysinfo.h>
 
 int option_debug = 0;
 int option_verbose = 0;
@@ -74,5 +75,34 @@ void *checked_malloc(size_t size)
 	void *mem = malloc(size);
 	if (mem == NULL)
 		fail("Out of memory allocating %zu bytes\n", size);
+
+	memset(mem, 0, size);
+
 	return mem;
+}
+
+void *checked_realloc(void *old_alloc, size_t new_size)
+{
+	void *mem = realloc(old_alloc, new_size);
+	if (mem == NULL)
+		fail("Out of memory allocating %zu bytes\n", new_size);
+	return mem;
+}
+
+/*
+ * CPU mask handling functions.
+ */
+
+int nr_cpus(void)
+{
+	static int nr_cpus;
+
+	if (nr_cpus == 0) {
+		nr_cpus = get_nprocs_conf();
+		if (nr_cpus <= 0)
+			fail("Could not determine number of CPUs");
+		info("%d CPUs configured in kernel", nr_cpus);
+	}
+
+	return nr_cpus;
 }

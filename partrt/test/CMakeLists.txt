@@ -29,7 +29,7 @@ if (CHECK_FOUND)
   # List of all test cases, one line per implementation file.
   #
 
-  define_test (test_partrt_cpumask)
+  define_test (test_partrt_bitmap)
   define_test (test_partrt_cpuset)
 
 else (CHECK_FOUND)
