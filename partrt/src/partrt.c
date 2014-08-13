@@ -198,13 +198,6 @@ unsigned long long option_to_ul(const char *str, unsigned long min,
 	return val;
 }
 
-int cmd_undo(int argc, char *argv[])
-{
-	(void) argc;
-	(void) argv;
-	return 1;
-}
-
 int cmd_run(int argc, char *argv[])
 {
 	(void) argc;

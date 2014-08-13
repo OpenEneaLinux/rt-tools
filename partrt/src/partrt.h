@@ -17,6 +17,8 @@
 #  define TRACEF(...)
 #endif
 
+#define PARTRT_SETTINGS_FILE "/tmp/partrt_env"
+
 /*******************************************************************************
  * partrt_common.c
  */
@@ -64,6 +66,12 @@ extern unsigned long long option_to_ul(const char *str, unsigned long min,
 extern int cmd_create(int argc, char *argv[]);
 
 /*******************************************************************************
+ * partrt_create.c
+ */
+
+extern int cmd_undo(int argc, char *argv[]);
+
+/*******************************************************************************
  * partrt_cpumask.c
  */
 
@@ -93,8 +101,9 @@ extern cpu_set_t *cpumask_alloc_from_u32_list(const char *mlist);
  */
 
 enum CpufsPartition {
-	partition_rt = 0,
-	partition_nrt = 1
+	partition_root = 0,
+	partition_rt = 1,
+	partition_nrt = 2
 };
 
 /*
@@ -116,6 +125,7 @@ extern int cpuset_is_empty(void);
 extern void cpuset_write(enum CpufsPartition partition, const char *file_name,
 			const char *value, FILE *value_log);
 
+extern void cpuset_partition_unlink(void);
 
 /*******************************************************************************
  * partrt_file.c

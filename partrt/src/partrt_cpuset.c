@@ -47,7 +47,7 @@
 #define CGROUP_CPUSET_ROOT "/sys/fs/cgroup/cpuset"
 #define CGROUP_ROOT        "/sys/fs/cgroup"
 
-static const char * const partition_name[] = { "rt", "nrt", NULL };
+static const char * const partition_name[] = { "", "rt", "nrt", NULL };
 
 static void logged_mount(const char *source, const char *target,
 			const char *fstype, const char *options)
@@ -268,7 +268,7 @@ static int cpuset_root(void)
 	return fd;
 }
 
-static int partition_fd[2] = { -1, -1};
+static int partition_fd[3] = { -1, -1, -1};
 
 static int cpuset_partition_root(enum CpufsPartition partition)
 {
@@ -276,6 +276,11 @@ static int cpuset_partition_root(enum CpufsPartition partition)
 
 	if (partition_fd[partition] != -1)
 		return partition_fd[partition];
+
+	if (partition == partition_root) {
+		partition_fd[partition] = cpuset_root();
+		return partition_fd[partition];
+	}
 
 	fd_root = cpuset_root();
 	if (mkdirat(fd_root, partition_name[partition], 0777)
@@ -368,15 +373,22 @@ void cpuset_partition_unlink(void)
 {
 	const int root = cpuset_root();
 	int idx;
+	char *root_name = file_fd_to_path_alloc(root);
 
-	for (idx = 0; idx < 2; idx++) {
-		if ((faccessat(root, partition_name[idx], F_OK, 0) == 0) &&
-			(unlinkat(root, partition_name[idx], AT_REMOVEDIR)
-				== -1))
-			fail("%s/%s: Failed unlink(): %s",
-				file_fd_to_path_alloc(root),
-				partition_name[idx],
-				strerror(errno));
+	info("Removing partitions");
+
+	for (idx = partition_rt; idx <= partition_nrt; idx++) {
+		debug("Considering %s/%s", root_name, partition_name[idx]);
+
+		if (faccessat(root, partition_name[idx], F_OK, 0) == 0) {
+			if (unlinkat(root, partition_name[idx], AT_REMOVEDIR)
+				== -1)
+				fail("%s/%s: Failed unlink(): %s",
+					file_fd_to_path_alloc(root),
+					partition_name[idx],
+					strerror(errno));
+			info("Removed partition %s", partition_name[idx]);
+		}
 
 		if ((partition_fd[idx] != -1)
 			&& (close(partition_fd[idx]) == -1))
