@@ -37,6 +37,8 @@
 #include <limits.h>
 #include <string.h>
 #include <fcntl.h>
+#include <errno.h>
+#include <time.h>
 
 static int dry_run = 0;
 
@@ -44,17 +46,24 @@ static int disable_numa_affinity = 1;
 static int migrate_bwq = 1;
 static int disable_machine_check = 1;
 static int defer_ticks = 1;
-static int numa_partition = 0;
-static const char *rt_numa_node = "0";
-/* static const char *nrt_numa_nodes = "0"; */
 static int restart_hotplug = 1;
 static int disable_watchdog = 1;
+
 static struct bitmap_t *rt_set = NULL;
 static struct bitmap_t *nrt_set = NULL;
+static struct bitmap_t *possible_numa_set = NULL;
+static struct bitmap_t *rt_numa_set = NULL;
+static struct bitmap_t *nrt_numa_set = NULL;
+
+/* These are cached values from *_set.
+ * *_mask was retrieved using bitmap_hex(), and *_list was retrieved using
+ * bitmap_list(). */
 static const char *rt_mask = NULL;
 static const char *nrt_mask = NULL;
 static const char *rt_list = NULL;
 static const char *nrt_list = NULL;
+static const char *rt_numa_list = NULL;
+static const char *nrt_numa_list = NULL;
 
 static void usage_create(void)
 {
@@ -95,15 +104,37 @@ static void usage_create(void)
 	exit(0);
 }
 
-#if 0
-static move_task(pid_t pid, const char *partition)
+static void irq_set_affinity(const char *cpu_mask)
 {
-	const char * const report_name =
-		(partition[0] == '\0') ? "root" : partition;
+	const int fd = open("/proc/irq", O_PATH | O_DIRECTORY);
+	struct file_iterator_t *iterator;
+	const char *name;
 
-	cpuset_write();
+	info("Setting affinity mask 0x%s to all interrupt vectors",
+		cpu_mask);
+
+	if (fd == -1)
+		fail("/proc/irq: Failed open(): %s", strerror(errno));
+
+	iterator = file_iterator_init(fd, ".", S_IFDIR);
+
+	file_write(fd, "default_smp_affinity", cpu_mask, NULL);
+
+	for (name = file_iterator_next(iterator);
+	     name != NULL;
+	     name = file_iterator_next(iterator)) {
+		char *path;
+
+		asprintf(&path, "%s/smp_affinity", name);
+		if (path == NULL)
+			fail("Out of memory");
+		if (file_try_write(fd, path, cpu_mask, NULL) != 0) {
+			char *fd_name = file_fd_to_path_alloc(fd);
+			info("%s/%s = %s  -- Failed, ignoring",
+				fd_name, path, cpu_mask);
+		}
+	}
 }
-#endif
 
 int cmd_create(int argc, char *argv[])
 {
@@ -123,6 +154,11 @@ int cmd_create(int argc, char *argv[])
 	};
 	static const char short_options[] = "+abcdhn:rtwC:D";
 	int c;
+	int bit;
+	FILE *log_file = NULL;
+	const time_t current_time = time(NULL);
+
+	cpuset_set_create(1);
 
 	while ((c = getopt_long(argc, argv, short_options, long_options,
 				NULL)) != -1) {
@@ -142,8 +178,10 @@ int cmd_create(int argc, char *argv[])
 			defer_ticks = 0;
 			break;
 		case 'n':
-			numa_partition = 1;
-			rt_numa_node = optarg;
+			if (rt_numa_set != NULL)
+				bitmap_free(rt_numa_set);
+
+			rt_numa_set = bitmap_alloc_from_list(optarg, 0);
 			break;
 		case 'r':
 			restart_hotplug = 0;
@@ -165,14 +203,27 @@ int cmd_create(int argc, char *argv[])
 		}
 	}
 
-	if (numa_partition && (rt_set != NULL))
-		fail("partrt create: Specified both CPU list (-C/--cpu) and numa partition (-n/--numa), these options are mutually exclusive");
+	if (rt_numa_set != NULL) {
+		char * const all_numa_nodes = file_read_alloc(
+			AT_FDCWD, "/sys/devices/system/node/possible");
+
+		if (rt_set != NULL)
+			fail("partrt create: Specified both CPU list (-C/--cpu) and numa partition (-n/--numa), these options are mutually exclusive");
+
+		possible_numa_set = bitmap_alloc_from_list(all_numa_nodes, 0);
+		nrt_numa_set = bitmap_alloc_filter_out(possible_numa_set, rt_numa_set);
+
+		rt_numa_list = bitmap_list(rt_numa_set);
+		nrt_numa_list = bitmap_list(nrt_numa_set);
+
+		free(all_numa_nodes);
+	}
 
 	if (rt_set == NULL) {
-		if (numa_partition) {
+		if (rt_numa_set != NULL) {
 			char *file_name;
 			char *buf;
-			asprintf(&file_name, "/sys/devices/system/node/node%s/cpumap", rt_numa_node);
+			asprintf(&file_name, "/sys/devices/system/node/node%s/cpumap", rt_numa_list);
 			buf = file_read_alloc(AT_FDCWD, file_name);
 			rt_set = bitmap_alloc_from_u32_list(buf, nr_cpus());
 			free(buf);
@@ -207,6 +258,30 @@ int cmd_create(int argc, char *argv[])
 	if (!cpuset_is_empty())
 		fail("partrt create: There are already cpusets/partitions in the system, remove them first with 'partrt undo'");
 
+	/* Disable load balancing in root partition, or else it will not be
+	 * possible to disable load balancing in RT partition. */
+	cpuset_write(partition_root, "cpuset.sched_load_balance", "0", NULL);
+
+	/* Set interrupt affinity to NRT partition */
+	irq_set_affinity(nrt_mask);
+
+	/* Restart CPUs in RT partition to force timers to migrate */
+	if (restart_hotplug)
+		for (bit = bitmap_next_bit(-1, rt_set);
+		     bit != -1;
+		     bit = bitmap_next_bit(bit, rt_set)) {
+			char *buf;
+
+			info("Restarting CPU %d", bit);
+			asprintf(&buf, "/sys/devices/system/cpu/cpu%d/online",
+				bit);
+			if (buf == NULL)
+				fail("Out of memory");
+			file_write(AT_FDCWD, buf, "0", NULL);
+			file_write(AT_FDCWD, buf, "1", NULL);
+			free(buf);
+		}
+
 	/*
 	 * Configure RT partition
 	 */
@@ -218,22 +293,71 @@ int cmd_create(int argc, char *argv[])
 	cpuset_write(partition_rt, "cpuset.cpu_exclusive", "1", NULL);
 
 	/* Handle NUMA */
-	if (numa_partition) {
-		cpuset_write(partition_rt, "cpuset.mems", rt_numa_node, NULL);
+	if (rt_numa_set != NULL) {
+		cpuset_write(partition_rt, "cpuset.mems", rt_numa_list, NULL);
 		cpuset_write(partition_rt, "cpuset.mem_exclusive", "1", NULL);
 	} else{
 		cpuset_write(partition_rt, "cpuset.mems", "0", NULL);
 	}
 
+	/* Disable load balance in RT partition */
+	cpuset_write(partition_rt, "cpuset.sched_load_balance", "0", NULL);
+
 	/*
 	 * Configure nRT partition
 	 */
 
-	
+	/* Handle NUMA */
+	if (rt_numa_set != NULL)
+		cpuset_write(partition_nrt, "cpuset.mems", nrt_numa_list, NULL);
+	else
+		cpuset_write(partition_nrt, "cpuset.mems", "0", NULL);
 
-	/* TODO: Insert implementation here */
-	
+	/* Allocate CPUs */
+	cpuset_write(partition_nrt, "cpuset.cpus", nrt_list, NULL);
 
+	/* Move all tasks/processes from root partition to NRT */
+	cpuset_move_all_tasks(partition_root, partition_nrt);
+
+	/* Enable load balancing in NRT partition */
+	cpuset_write(partition_nrt, "cpuset.sched_load_balance", "1", NULL);
+
+	/*
+	 * Tweak kernel parameters to get better real-time characteristics
+	 */
+
+	/* Open settings log file, which can be used to restore settings */
+	log_file = fopen(PARTRT_SETTINGS_FILE, "w");
+	if (log_file == NULL)
+		fail("%s: Failed open(): %s",
+			PARTRT_SETTINGS_FILE, strerror(errno));
+
+	fprintf(log_file, "%s", ctime(&current_time));
+
+	/* Try to avoid 1 second ticks, currently relies on a separate patch */
+	if (defer_ticks)
+		file_write(AT_FDCWD, "/sys/kernel/debug/sched_tick_max_deferment", "-1", log_file);
+
+	/* Disable NUMA affinity */
+	if (disable_numa_affinity)
+		file_write(AT_FDCWD, "/sys/bus/workqueue/devices/writeback/numa", "0", log_file);
+
+	/* Disable kernel watchdog */
+	if (disable_watchdog)
+		file_write(AT_FDCWD, "/proc/sys/kernel/watchdog", "0", log_file);
+
+	/* Move block device writeback workqueues */
+	if (migrate_bwq)
+		file_write(AT_FDCWD, "/sys/bus/workqueue/devices/writeback/cpumask", nrt_mask, log_file);
+
+	/* Disable machine check. Writing 0 to machinecheck0/check_interall
+	 * will siable it for all CPUs */
+	if (disable_machine_check)
+		file_write(AT_FDCWD, "/sys/devices/system/machinecheck/machinecheck0/check_interval", "0", log_file);
+
+	info("System was successfylly divided into following partitions:");
+	info("Isolated CPUs    : %s", rt_list);
+	info("Non-isolated CPUs: %s", nrt_list);
 
 	fflush(stdout);
 

@@ -34,6 +34,8 @@
 #include <getopt.h>
 #include <string.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 static const char *option_settings_file = PARTRT_SETTINGS_FILE;
 static int option_settings_file_specified = 0;
@@ -144,6 +146,10 @@ int cmd_undo(int argc, char *argv[])
 		}
 	}
 
+	if (cpuset_partition_root(partition_rt) != -1)
+		cpuset_move_all_tasks(partition_rt, partition_root);
+	if (cpuset_partition_root(partition_nrt) != -1)
+		cpuset_move_all_tasks(partition_nrt, partition_root);
 	restore_from_file();
 	cpuset_partition_unlink();
 

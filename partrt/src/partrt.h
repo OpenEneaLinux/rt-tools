@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include <sched.h>
+#include <sys/types.h>
 
 #define STR(x) #x
 #define STRSTR(x) STR(x)
@@ -95,6 +96,8 @@ extern struct bitmap_t *bitmap_alloc_from_list(const char *list,
 extern struct bitmap_t *bitmap_alloc_complement(const struct bitmap_t *set);
 extern struct bitmap_t *bitmap_alloc_from_mask(const char *mask,
 					size_t max_size_bits);
+extern struct bitmap_t *bitmap_alloc_filter_out(
+	const struct bitmap_t *base, const struct bitmap_t *filter);
 
 /*
  * Create a bitmap_t from a string containing a list of hexadecimal
@@ -103,6 +106,7 @@ extern struct bitmap_t *bitmap_alloc_from_mask(const char *mask,
  */
 extern struct bitmap_t *bitmap_alloc_from_u32_list(const char *mlist,
 						size_t max_size_bits);
+extern int bitmap_next_bit(int previous_bit, const struct bitmap_t *set);
 
 /*******************************************************************************
  * partrt_cpuset.c
@@ -133,7 +137,20 @@ extern int cpuset_is_empty(void);
 extern void cpuset_write(enum CpufsPartition partition, const char *file_name,
 			const char *value, FILE *value_log);
 
+extern int cpuset_try_write(enum CpufsPartition partition,
+			const char *file_name, const char *value,
+			FILE *value_log);
+
+extern char *cpuset_read_alloc(enum CpufsPartition partition, const char *file);
+
 extern void cpuset_partition_unlink(void);
+
+extern const char *cpuset_partition_name(enum CpufsPartition partition);
+extern int cpuset_partition_root(enum CpufsPartition partition);
+extern void cpuset_move_task(pid_t pid, enum CpufsPartition partition);
+extern void cpuset_move_all_tasks(enum CpufsPartition from,
+				enum CpufsPartition to);
+extern void cpuset_set_create(int enable);
 
 /*******************************************************************************
  * partrt_file.c
@@ -143,3 +160,13 @@ extern char *file_fd_to_path_alloc(int fd);
 extern char *file_read_alloc(int dirfd, const char *file);
 extern char *file_pid_to_name_alloc(pid_t pid);
 
+struct file_iterator_t;
+
+extern struct file_iterator_t *file_iterator_init(
+	int fd_dir, const char *dir_name, mode_t mode);
+extern const char *file_iterator_next(struct file_iterator_t *iterator);
+extern void file_iterator_close(struct file_iterator_t *iterator);
+extern void file_write(int fd_root, const char *file_name,
+		const char *value, FILE *value_log);
+extern int file_try_write(int fd_root, const char *file_name,
+			const char *value, FILE *value_log);

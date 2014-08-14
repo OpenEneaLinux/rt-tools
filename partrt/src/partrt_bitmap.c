@@ -127,11 +127,12 @@ int bitmap_isset(int bit, const struct bitmap_t *set)
 	debug("%s(%d,%p): size u32: %zu, size bits: %zu, map[%d]: 0x%x, value %d",
 		__func__, bit, set, set->size_u32, set->size_bits,
 		bit/32, set->map[bit / 32],
-		(set->map[bit / 32] & ((uint32_t) 1 << (bit % 32))) == 0 ? 0 : 1
-);
+		((set->map[bit / 32] & ((uint32_t) 1 << (bit % 32))) == 0)
+		? 0 : 1
+		);
 #endif
 
-	return (set->map[bit / 32] & (1 << (bit % 32))) == 0 ? 0 : 1;
+	return ((set->map[bit / 32] & (1 << (bit % 32))) == 0) ? 0 : 1;
 }
 
 size_t bitmap_bit_count(const struct bitmap_t *set)
@@ -344,4 +345,34 @@ struct bitmap_t *bitmap_alloc_from_u32_list(const char *mlist,
 					size_t max_size_bits)
 {
 	return alloc_from_mask(mlist, ',', max_size_bits);
+}
+
+
+struct bitmap_t *bitmap_alloc_filter_out(const struct bitmap_t *base,
+		const struct bitmap_t *filter)
+{
+	size_t bit;
+	struct bitmap_t *new_set = bitmap_alloc_zero(base->size_bits);;
+
+	if (base->size_bits < filter->size_bits)
+		fail("%s: Internal error: Base smaller than filter", __func__);
+
+	for (bit = 0; bit < base->size_bits; bit++)
+		if (bitmap_isset(bit, base) && !bitmap_isset(bit, filter))
+			bitmap_set(bit, new_set);
+
+	return new_set;
+}
+
+int bitmap_next_bit(int previous_bit, const struct bitmap_t *set)
+{
+	previous_bit++;
+	if (previous_bit < 0)
+		return -1;
+
+	for (; (unsigned) previous_bit < set->size_bits; previous_bit++)
+		if (bitmap_isset(previous_bit, set))
+			return previous_bit;
+
+	return -1;
 }

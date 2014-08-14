@@ -60,7 +60,7 @@ endmacro (check_optional_module)
 check_optional_module(LTTNG_UST lttng-ust)
 
 # Common flags
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99 -Wall -Wextra -Werror -Dpartrt_VERSION_MAJOR=${partrt_VERSION_MAJOR} -Dpartrt_VERSION_MINOR=${partrt_VERSION_MINOR}")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99 -Wall -Wextra -Werror -Wshadow -Dpartrt_VERSION_MAJOR=${partrt_VERSION_MAJOR} -Dpartrt_VERSION_MINOR=${partrt_VERSION_MINOR}")
 
 # Application source directory
 add_subdirectory (src)

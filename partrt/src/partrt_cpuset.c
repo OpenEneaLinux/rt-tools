@@ -48,6 +48,7 @@
 #define CGROUP_ROOT        "/sys/fs/cgroup"
 
 static const char * const partition_name[] = { "", "rt", "nrt", NULL };
+static int enable_create = 0;
 
 static void logged_mount(const char *source, const char *target,
 			const char *fstype, const char *options)
@@ -236,6 +237,9 @@ static int cpuset_root(void)
 		fail("%s: Failed closing file handle: %s",
 			PROCFS_MOUNTS, strerror(errno));
 
+	if (!enable_create && (!found_cgroup || !found_cpuset))
+		fail("cpuset virtual file system not mounted, terminating");
+
 	/*
 	 * Perform any missing mounts
 	 */
@@ -270,7 +274,7 @@ static int cpuset_root(void)
 
 static int partition_fd[3] = { -1, -1, -1};
 
-static int cpuset_partition_root(enum CpufsPartition partition)
+int cpuset_partition_root(enum CpufsPartition partition)
 {
 	int fd_root;
 
@@ -283,34 +287,29 @@ static int cpuset_partition_root(enum CpufsPartition partition)
 	}
 
 	fd_root = cpuset_root();
-	if (mkdirat(fd_root, partition_name[partition], 0777)
-		!= 0)
-		fail("%s/%s: Failed creating directory: %s",
-			CGROUP_CPUSET_ROOT,
-			partition_name[partition],
-			strerror(errno));
+
+	if (enable_create) {
+		if (mkdirat(fd_root, partition_name[partition], 0777)
+			!= 0)
+			fail("%s/%s: Failed creating directory: %s",
+				CGROUP_CPUSET_ROOT,
+				partition_name[partition],
+				strerror(errno));
+	}
 	partition_fd[partition] = openat(fd_root, partition_name[partition],
 		O_PATH | O_DIRECTORY);
-	if (partition_fd[partition] < 0)
-		fail("%s/%s: Failed opening directory as a reference: %s",
+	if (partition_fd[partition] < 0) {
+		if (!enable_create)
+			info("%s/%s: Partition not found, and create not requested. Ignoring.",
+			CGROUP_CPUSET_ROOT,
+			partition_name[partition]);
+		else
+			fail("%s/%s: Failed open(): %s",
 			CGROUP_CPUSET_ROOT,
 			partition_name[partition],
 			strerror(errno));
+	}
 	return partition_fd[partition];
-}
-
-static void save_old_content(int dirfd, const char *file_name, FILE *dest)
-{
-	char * const buf = file_read_alloc(dirfd, file_name);
-	char * const file_path = file_fd_to_path_alloc(dirfd);
-
-	if (fprintf(dest, "%s/%s=%s\n", file_path, file_name, buf) == EOF)
-		fail("%s/%s: Failed fprintf(): %s",
-			file_path, file_name, strerror(errno));
-
-	debug("%s: %s/%s=%s\n", __func__, file_path, file_name, buf);
-
-	free(file_path);
 }
 
 /*
@@ -326,47 +325,20 @@ int cpuset_is_empty(void)
 void cpuset_write(enum CpufsPartition partition, const char *file_name,
 		const char *value, FILE *value_log)
 {
-	const int fd_root = cpuset_partition_root(partition);
-	const int fd = openat(fd_root, file_name,
-			(value_log == NULL) ? O_WRONLY : O_RDWR);
-	const ssize_t bytes_to_write = strlen(value);
-	ssize_t bytes_written;
+	file_write(cpuset_partition_root(partition), file_name, value,
+		value_log);
+}
 
-	TRACEF("Writing '%s' to %s partition\n",
-		value,
-		(partition == partition_rt) ? "rt" : "nrt");
+int cpuset_try_write(enum CpufsPartition partition, const char *file_name,
+		const char *value, FILE *value_log)
+{
+	return file_try_write(cpuset_partition_root(partition), file_name,
+			value, value_log);
+}
 
-	info("fd=%d", fd);
-
-	if (fd < 0)
-		fail("%s/%s/%s: Failed to open file: %s",
-			CGROUP_CPUSET_ROOT,
-			partition_name[partition],
-			file_name,
-			strerror(errno));
-
-	if (value_log != NULL)
-		save_old_content(fd_root, file_name, value_log);
-
-	bytes_written = write(fd, value, bytes_to_write);
-	if (bytes_written != bytes_to_write) {
-		if (bytes_written == -1)
-			fail("%s: Failed to write to file: %s",
-				file_fd_to_path_alloc(fd),
-				strerror(errno));
-		else
-			fail("%s: Failed to write to file: %zd bytes written, expected %zd bytes",
-				file_fd_to_path_alloc(fd),
-				bytes_written,
-				bytes_to_write);
-	}
-
-	if (close(fd) != 0)
-		fail("%s/%s/%s: Failed closing file descriptor: %s",
-			CGROUP_CPUSET_ROOT,
-			partition_name[partition],
-			file_name,
-			strerror(errno));
+char *cpuset_read_alloc(enum CpufsPartition partition, const char *file)
+{
+	return file_read_alloc(cpuset_partition_root(partition), file);
 }
 
 void cpuset_partition_unlink(void)
@@ -399,4 +371,58 @@ void cpuset_partition_unlink(void)
 
 		partition_fd[idx] = -1;
 	}
+}
+
+const char *cpuset_partition_name(enum CpufsPartition partition)
+{
+	if (partition == partition_root)
+		return "<root>";
+
+	return partition_name[partition];
+}
+
+void cpuset_move_task(pid_t pid, enum CpufsPartition partition)
+{
+	char *pid_str;
+	char * const file_name = file_pid_to_name_alloc(pid);
+
+	asprintf(&pid_str, "%u", pid);
+
+	if (pid_str == NULL)
+		fail("Out of memory");
+
+	if (cpuset_try_write(partition, "tasks", pid_str, NULL) != 0)
+		info("%u (%s): Failed move to %s",
+			pid, file_name, cpuset_partition_name(partition));
+
+	free(pid_str);
+	free(file_name);
+}
+
+void cpuset_move_all_tasks(enum CpufsPartition from, enum CpufsPartition to)
+{
+	char * const buf = cpuset_read_alloc(from, "tasks");
+	char *task;
+
+	info("Moving all tasks from partition %s to %s",
+		cpuset_partition_name(from), cpuset_partition_name(to));
+
+	for (task = strtok(buf, " \n\r\t");
+	     task != NULL;
+	     task = strtok(NULL, " \n\r\t")) {
+		char *endptr;
+		pid_t task_pid = strtoul(task, &endptr, 0);
+		if ((task[0] == '\0') || (endptr[0] != '\0'))
+			fail("Error reading tasks file: %s: Illegal task PID",
+				task);
+
+		cpuset_move_task(task_pid, to);
+	}
+
+	free(buf);
+}
+
+void cpuset_set_create(int enable)
+{
+	enable_create = enable;
 }

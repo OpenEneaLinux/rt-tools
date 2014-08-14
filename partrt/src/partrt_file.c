@@ -123,6 +123,77 @@ char *file_read_alloc(int dirfd, const char *file)
 	return buf;
 }
 
+static void save_old_content(int fd_root, const char *file_name, FILE *dest)
+{
+	char * const buf = file_read_alloc(fd_root, file_name);
+	char *file_path;
+
+	asprintf(&file_path, "%s/%s", file_fd_to_path_alloc(fd_root),
+		file_name);
+	if (file_path == NULL)
+		fail("Out of memory");
+
+	if (fprintf(dest, "%s=%s\n", file_path, buf) == EOF)
+		fail("%s: Failed fprintf(): %s", file_path, strerror(errno));
+
+	debug("%s: %s=%s\n", __func__, file_path, buf);
+
+	free(file_path);
+}
+
+int file_try_write(int fd_root, const char *file_name,
+		const char *value, FILE *value_log)
+{
+	const int fd = openat(fd_root, file_name,
+			(value_log == NULL) ? O_WRONLY : O_RDWR);
+	ssize_t bytes_to_write = strlen(value);
+
+	if (fd < 0)
+		return errno;
+
+	if (value_log != NULL)
+		save_old_content(fd_root, file_name, value_log);
+
+	do {
+		const ssize_t bytes_written = write(fd, value, bytes_to_write);
+		if (bytes_written == -1)
+			return errno;
+
+		/* Zero bytes written should normally not occur for regular
+		 * files, but the standard does not prohibit this. It might
+		 * be worthwhile trying again, but since this probably never
+		 * happens, fail instead of implementing retry counter. */
+		if (bytes_written == 0)
+			fail("%s: Failed write(): Zero bytes written",
+				file_fd_to_path_alloc(fd),
+				bytes_written,
+				bytes_to_write);
+		bytes_to_write -= bytes_written;
+	} while (bytes_to_write > 0);
+
+	if (close(fd) != 0)
+		fail("%s/%s: Failed closing file descriptor: %s",
+			file_fd_to_path_alloc(fd_root),
+			file_name,
+			strerror(errno));
+
+	debug("%s/%s = %s", file_fd_to_path_alloc(fd_root), file_name, value);
+
+	return 0;
+}
+
+void file_write(int fd_root, const char *file_name,
+		const char *value, FILE *value_log)
+{
+	const int result = file_try_write(fd_root, file_name, value, value_log);
+
+	if (result != 0)
+		fail("%s/%s: Failed to write to file: %s",
+			file_fd_to_path_alloc(fd_root),
+			file_name,
+			strerror(result));
+}
+
 char *file_pid_to_name_alloc(pid_t pid)
 {
 	char *file_name;
@@ -145,4 +216,88 @@ char *file_pid_to_name_alloc(pid_t pid)
 		fail("%s: Failed fclose(): %s",
 			file_name, strerror(errno));
 	return buf;
+}
+
+struct file_iterator_t
+{
+	int fd;
+	DIR *dir;
+	mode_t mode;
+};
+
+struct file_iterator_t *file_iterator_init(int fd_dir, const char *dir_name,
+	mode_t mode)
+{
+	struct file_iterator_t * const iterator =
+		checked_malloc(sizeof (struct file_iterator_t));
+
+	iterator->mode = mode;
+
+	iterator->fd = openat(fd_dir, dir_name, O_DIRECTORY | O_RDONLY);
+
+	if (iterator->fd == -1)
+		fail("%s/%s: Failed openat(): %s",
+			file_fd_to_path_alloc(fd_dir), dir_name,
+			strerror(errno));
+
+	iterator->dir = fdopendir(iterator->fd);
+	if (iterator->dir == NULL)
+		fail("%s/%s: Failed fdopendir(): %s",
+			file_fd_to_path_alloc(fd_dir), dir_name,
+			strerror(errno));
+
+	return iterator;
+}
+
+const char *file_iterator_next(struct file_iterator_t *iterator)
+{
+	const struct dirent * dirent;
+	int old_errno = errno;
+	struct stat stat;
+
+	errno = 0;
+
+	do {
+		dirent = readdir(iterator->dir);
+		if ((dirent == NULL) && (errno != 0))
+			fail("%s: Failed readdir(): %s",
+				file_fd_to_path_alloc(iterator->fd),
+				strerror(errno));
+
+		if (dirent == NULL) {
+			errno = old_errno;
+			return NULL;
+		}
+
+		if (strcmp(dirent->d_name, ".") == 0)
+			continue;
+
+		if (strcmp(dirent->d_name, "..") == 0)
+			continue;
+
+		if (fstatat(iterator->fd, dirent->d_name, &stat, 0) == -1)
+			fail("%s/%s: Failed stat(): %s",
+				file_fd_to_path_alloc(iterator->fd),
+				dirent->d_name,
+				strerror(errno));
+
+	} while ((stat.st_mode & S_IFMT) != iterator->mode);
+
+	errno = old_errno;
+
+	debug("%s: Returning %s", __func__, dirent->d_name);
+
+	return dirent->d_name;
+}
+
+void file_iterator_close(struct file_iterator_t *iterator)
+{
+	if (closedir(iterator->dir) == -1)
+		fail("%s: Failed closedir(): %s",
+			file_fd_to_path_alloc(iterator->fd), strerror(errno));
+
+	iterator->fd = -1;
+	iterator->dir = NULL;
+
+	free(iterator);
 }
