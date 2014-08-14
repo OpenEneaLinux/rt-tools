@@ -40,6 +40,9 @@
 #include <errno.h>
 #include <string.h>
 
+/* #define VERBOSE_DEBUG */
+
+#define PATH_DOT "."
 
 char *file_fd_to_path_alloc(int fd)
 {
@@ -47,6 +50,14 @@ char *file_fd_to_path_alloc(int fd)
 	char *path = NULL;
 	ssize_t name_size;
 	char *proc_path = NULL;
+
+	if (fd == AT_FDCWD) {
+		path = strdup(PATH_DOT);
+		if (path == NULL)
+			fail("Out of memory allocating %zu bytes",
+				sizeof (PATH_DOT));
+		return path;
+	}
 
 	if (asprintf(&proc_path, "/proc/self/fd/%d", fd) == -1)
 		goto do_return;
@@ -90,8 +101,6 @@ char *file_read_alloc(int dirfd, const char *file)
 	ssize_t bytes_read;
 	static char read_cache[4096];
 
-	debug("%s(%d,'%s'): Entered", __func__, dirfd, file);
-
 	if (fd == -1)
 		fail("%s/%s: Failed openat(): %s",
 			file_fd_to_path_alloc(dirfd), file, strerror(errno));
@@ -119,7 +128,9 @@ char *file_read_alloc(int dirfd, const char *file)
 
 	memcpy(buf, read_cache, bytes_read + 1);
 
+#ifdef VERBOSE_DEBUG
 	debug("%s: Returned '%s'", __func__, buf);
+#endif
 	return buf;
 }
 
@@ -284,8 +295,6 @@ const char *file_iterator_next(struct file_iterator_t *iterator)
 	} while ((stat.st_mode & S_IFMT) != iterator->mode);
 
 	errno = old_errno;
-
-	debug("%s: Returning %s", __func__, dirent->d_name);
 
 	return dirent->d_name;
 }

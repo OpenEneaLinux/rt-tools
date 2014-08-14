@@ -73,12 +73,12 @@ static void restore_from_file(void)
 		}
 	}
 
-	nr_matches = fscanf(file, "partrt_settings: %ms ", &value);
+	nr_matches = fscanf(file, "partrt_settings: %m[^\n] ", &value);
 	if (nr_matches < 0)
 		fail("%s: Failed fscanf(): %s",
 			option_settings_file, strerror(errno));
 	if (nr_matches != 1)
-		fail("%s: Not a partrt settings files");
+		fail("%s: Not a partrt settings files", option_settings_file);
 
 	info("Restoring settings made %s", value);
 

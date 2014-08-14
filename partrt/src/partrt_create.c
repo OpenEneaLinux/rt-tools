@@ -281,6 +281,8 @@ int cmd_create(int argc, char *argv[])
 			file_write(AT_FDCWD, buf, "1", NULL);
 			free(buf);
 		}
+	else
+		info("CPU hotplug restart skipped due to option --no-restart-hotplug");
 
 	/*
 	 * Configure RT partition
@@ -332,32 +334,45 @@ int cmd_create(int argc, char *argv[])
 		fail("%s: Failed open(): %s",
 			PARTRT_SETTINGS_FILE, strerror(errno));
 
-	fprintf(log_file, "%s", ctime(&current_time));
+	info("%s: Restore file opened", PARTRT_SETTINGS_FILE);
+
+	fprintf(log_file, "partrt_settings: %s", ctime(&current_time));
 
 	/* Try to avoid 1 second ticks, currently relies on a separate patch */
 	if (defer_ticks)
 		file_write(AT_FDCWD, "/sys/kernel/debug/sched_tick_max_deferment", "-1", log_file);
+	else
+		info("Tick deferment skipped by option --no-defer-ticks");
 
 	/* Disable NUMA affinity */
 	if (disable_numa_affinity)
 		file_write(AT_FDCWD, "/sys/bus/workqueue/devices/writeback/numa", "0", log_file);
+	else
+		info("Device writeback NUMA affinity skipped by option --keep-numa-affinity");
 
 	/* Disable kernel watchdog */
 	if (disable_watchdog)
 		file_write(AT_FDCWD, "/proc/sys/kernel/watchdog", "0", log_file);
+	else
+		info("Kernel watchdog kept enabled by option --keep-watchdog");
 
 	/* Move block device writeback workqueues */
 	if (migrate_bwq)
 		file_write(AT_FDCWD, "/sys/bus/workqueue/devices/writeback/cpumask", nrt_mask, log_file);
+	else
+		info("Block device writeback workqueues not migrated due to option --disable-migrate-bwq");
 
 	/* Disable machine check. Writing 0 to machinecheck0/check_interall
 	 * will siable it for all CPUs */
 	if (disable_machine_check)
 		file_write(AT_FDCWD, "/sys/devices/system/machinecheck/machinecheck0/check_interval", "0", log_file);
+	else
+		info("Machine check left enabled by option --keep-machine-check");
 
-	info("System was successfylly divided into following partitions:");
-	info("Isolated CPUs    : %s", rt_list);
-	info("Non-isolated CPUs: %s", nrt_list);
+	printf("System was successfylly divided into following partitions:\n"
+		"Isolated CPUs    : %s\n"
+		"Non-isolated CPUs: %s\n",
+		rt_list, nrt_list);
 
 	fflush(stdout);
 
