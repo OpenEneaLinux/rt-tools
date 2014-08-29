@@ -25,6 +25,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "../src/partrt_common.c"
+#include "../src/partrt_file.c"
 #include "../src/partrt_bitmap.c"
 #include <check.h>
 
