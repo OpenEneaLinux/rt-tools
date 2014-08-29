@@ -1,3 +1,6 @@
+#ifndef PARTRT_H
+#define PARTRT_H
+
 #define _GNU_SOURCE
 
 #include <sched.h>
@@ -42,7 +45,7 @@ extern int nr_cpus(void);
 #  define fail(fmt, ...)			\
 	do {					\
 	    tracef("Fail: "  __FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt, __func__, ##__VA_ARGS__); \
-	    std_fail(fmt "\n", ##__VA_ARGS__);	\
+	    std_fail("Fail: "  __FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt "\n", __func__, ##__VA_ARGS__);\
 	} while (0)
 
 #  define info(fmt, ...)			\
@@ -59,7 +62,7 @@ extern int nr_cpus(void);
 
 #else
 
-#  define fail(...) std_fail(__VA_ARGS__)
+#  define fail(fmt, ...) std_fail("Fail: "  __FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt "\n", __func__, ##__VA_ARGS__)
 #  define info(...) std_info(__VA_ARGS__)
 #  define debug(...) std_debug(__VA_ARGS__)
 
@@ -170,3 +173,5 @@ extern void file_write(int fd_root, const char *file_name,
 		const char *value, FILE *value_log);
 extern int file_try_write(int fd_root, const char *file_name,
 			const char *value, FILE *value_log);
+
+#endif
