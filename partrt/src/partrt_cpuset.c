@@ -264,7 +264,7 @@ static int cpuset_root(void)
 
 	fd = open(CGROUP_CPUSET_ROOT, O_PATH | O_DIRECTORY);
 	if (fd < 0)
-		fail("%s: Unable open path as a directory reference: %s",
+		fail("%s: Unable to open path as a directory reference: %s",
 			CGROUP_CPUSET_ROOT, strerror(errno));
 
 	errno = saved_errno;
