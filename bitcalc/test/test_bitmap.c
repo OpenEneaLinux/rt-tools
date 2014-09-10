@@ -34,7 +34,7 @@
 /* Run prior to each test case */
 void checked_setup()
 {
-	option_verbose = 99;
+	option_verbose = 0;
 }
 
 /* Run after each test case */
@@ -48,9 +48,9 @@ void checked_teardown()
  */
 START_TEST(test_bitmap_set)
 {
-	static const int first_bit_set = 1000;
-	static const int last_bit_set = 1002;
-	struct bitmap_t * const set = bitmap_alloc_zero(0);
+	static const int first_bit_set = 0;
+	static const int last_bit_set = 4002;
+	struct bitmap_t * const set = bitmap_alloc_zero();
 	int bit;
 
 	info("%s: Test case entry", __func__);
@@ -87,7 +87,7 @@ START_TEST(test_bitmap_alloc_set)
 	int bit;
 
 	/* Allocate bit field with one bit set */
-	struct bitmap_t * const set = bitmap_alloc_set(bit_set, bit_set * 2);
+	struct bitmap_t * const set = bitmap_alloc_set(bit_set);
 
 	info("%s: Test case entry", __func__);
 
@@ -116,7 +116,7 @@ START_TEST(test_bitmap_hex_from_list)
 
 	info("%s: Test case entry", __func__);
 
-	set = bitmap_alloc_from_list("1,7-10,3-4", 0);
+	set = bitmap_alloc_from_list("1,7-10,3-4");
 	returned_hex = bitmap_hex(set);
 
 	ck_assert_msg(strcmp(in_hex, returned_hex) == 0,
@@ -134,14 +134,14 @@ END_TEST
  */
 START_TEST(test_bitmap_alloc_complement)
 {
-	static const char in_hex[] = "f865";
+	static const char in_hex[] = "65";
 	struct bitmap_t *set;
 	struct bitmap_t *comp_set;
 	char *returned_hex;
 
 	info("%s: Test case entry", __func__);
 
-	set = bitmap_alloc_from_list("1,7-10,3-4", 16);
+	set = bitmap_alloc_from_list("1,7-10,3-4");
 	comp_set = bitmap_alloc_complement(set);
 	returned_hex = bitmap_hex(comp_set);
 
@@ -158,7 +158,7 @@ END_TEST
 
 static void try_alloc_from_mask(const char *in_mask, const char *out_mask)
 {
-	struct bitmap_t * const set = bitmap_alloc_from_mask(in_mask, 0);
+	struct bitmap_t * const set = bitmap_alloc_from_mask(in_mask);
 	char * const returned_mask = bitmap_hex(set);
 
 	ck_assert_msg(strcmp(returned_mask, out_mask) == 0,
@@ -196,7 +196,7 @@ START_TEST(test_bitmap_alloc_from_u32_list)
 
 	info("%s: Test case entry", __func__);
 
-	set = bitmap_alloc_from_u32_list(mlist, 0);
+	set = bitmap_alloc_from_u32_list(mlist);
 
 	ck_assert(bitmap_isset(0, set));
 	ck_assert(bitmap_isset(1, set));
@@ -210,7 +210,7 @@ END_TEST
 START_TEST(test_bitmap_list_1)
 {
 	static const char list[] = "1-2,4-7,9";
-	struct bitmap_t * const set = bitmap_alloc_from_list(list, 0);
+	struct bitmap_t * const set = bitmap_alloc_from_list(list);
 	char *returned_list = bitmap_list(set);
 
 	info("%s: Test case entry", __func__);
@@ -236,7 +236,7 @@ START_TEST(test_bitmap_list_2)
 
 	asprintf(&list, "%d", 63);
 	ck_assert(list != NULL);
-	set = bitmap_alloc_from_list(list, 0);
+	set = bitmap_alloc_from_list(list);
 	returned_list = bitmap_list(set);
 	ck_assert(returned_list != NULL);
 
@@ -254,7 +254,7 @@ END_TEST
 
 START_TEST(test_bitmap_bit_count)
 {
-	struct bitmap_t * const set = bitmap_alloc_zero(0);
+	struct bitmap_t * const set = bitmap_alloc_zero();
 	int count;
 
 	info("%s: Test case entry", __func__);

@@ -33,15 +33,18 @@
 #include <sys/sysinfo.h>
 
 int option_verbose = 0;
+const char *parse_scope = NULL;
 
 void std_fail(const char *format, ...)
 {
 	va_list va;
 
-	fflush(stdout);
-
+	if (parse_scope != NULL)
+		fprintf(stderr, "Error while parsing %s: ", parse_scope);
+	else
+		fprintf(stderr, "Error: ");
 	va_start(va, format);
-	vfprintf(stdout, format, va);
+	vfprintf(stderr, format, va);
 	va_end(va);
 
 	exit(EXIT_FAILURE);
@@ -53,8 +56,11 @@ void std_info(const char *format, ...)
 
 	if (option_verbose < 1) return;
 
+	if (parse_scope != NULL)
+		fprintf(stderr, "Parsing %s: ", parse_scope);
+
 	va_start(va, format);
-	vprintf(format, va);
+	vfprintf(stderr, format, va);
 	va_end(va);
 }
 
@@ -64,10 +70,12 @@ void std_debug(const char *format, ...)
 
 	if (option_verbose < 2) return;
 
+	if (parse_scope != NULL)
+		fprintf(stderr, "Parsing %s: ", parse_scope);
+
 	va_start(va, format);
-	vprintf(format, va);
+	vfprintf(stderr, format, va);
 	va_end(va);
-	fflush(stdout);
 }
 
 void *checked_malloc(size_t size)

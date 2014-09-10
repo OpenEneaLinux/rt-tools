@@ -34,3 +34,20 @@ if (CHECK_FOUND)
 else (CHECK_FOUND)
   message (STATUS "Unit tests not built")
 endif (CHECK_FOUND)
+
+#
+# Functional testing
+#
+
+macro (do_test test_name arg result)
+  add_test (${test_name} ../src/bitcalc ${arg})
+  set_tests_properties (${test_name}
+    PROPERTIES PASS_REGULAR_EXPRESSION ${result})
+endmacro (do_test)
+
+do_test (bitcalc_help "--help" "Usage:")
+do_test (bitcalc_h "-h" "Usage:")
+do_test (bitcalc_version "--version" "bitcalc 1.0")
+do_test (bitcalc_V "-V" "bitcalc 1.0")
+do_test (bitcalc_example1 "#1-2,4-5 #2-4 xor" "2a")
+

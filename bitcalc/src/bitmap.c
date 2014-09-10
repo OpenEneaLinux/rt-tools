@@ -41,17 +41,15 @@
 struct bitmap_t {
 	size_t size_u32;
 	size_t size_bits;
-	size_t max_size_bits;
 	uint32_t *map;
 };
 
-struct bitmap_t *bitmap_alloc_zero(size_t max_size_bits)
+struct bitmap_t *bitmap_alloc_zero(void)
 {
 	struct bitmap_t * const set = checked_malloc(sizeof (struct bitmap_t));
 
-	set->size_bits = max_size_bits;
+	set->size_bits = 0;
 	set->size_u32 = (set->size_bits / 32) + 1;
-	set->max_size_bits = max_size_bits;
 
 	set->map = checked_malloc(sizeof (uint32_t) * set->size_u32);
 	memset(set->map, 0, sizeof (uint32_t) * set->size_u32);
@@ -78,15 +76,13 @@ void bitmap_set_bit(int bit, int value, struct bitmap_t *set)
 	if (bit < 0)
 		fail("%s: Illegal bit index %d", __func__, bit);
 
-	if ((set->max_size_bits > 0) && ((unsigned) bit >= set->max_size_bits))
-		fail("%s: Bit %d exceeds max size", __func__, bit);
-
 	if ((unsigned) bit >= set->size_bits) {
 		set->size_bits = bit + 1;
-		if ((set->size_bits / 32) > set->size_u32) {
+		if ((set->size_bits / 32) >= set->size_u32) {
 			const size_t old_size_u32 = set->size_u32;
 
 			set->size_u32 = (set->size_bits / 32) + 1;
+
 			set->map = checked_realloc(
 				set->map, sizeof (uint32_t) * set->size_u32);
 			memset(&set->map[old_size_u32], 0,
@@ -112,9 +108,9 @@ void bitmap_set(int bit, struct bitmap_t *set)
 	bitmap_set_bit(bit, 1, set);
 }
 
-struct bitmap_t *bitmap_alloc_set(int bit, size_t max_size_bits)
+struct bitmap_t *bitmap_alloc_set(int bit)
 {
-	struct bitmap_t *set = bitmap_alloc_zero(max_size_bits);
+	struct bitmap_t *set = bitmap_alloc_zero();
 
 	if (bit < 0)
 		fail("%s: Illegal bit index %d", __func__, bit);
@@ -252,10 +248,10 @@ char *bitmap_list(const struct bitmap_t *set)
 	return str;
 }
 
-struct bitmap_t *bitmap_alloc_from_list(const char *list, size_t max_size_bits)
+struct bitmap_t *bitmap_alloc_from_list(const char *list)
 {
 	const char * const original_list = list;
-	struct bitmap_t *set = bitmap_alloc_zero(max_size_bits);
+	struct bitmap_t *set = bitmap_alloc_zero();
 
 	while (*list != '\0') {
 		int bit;
@@ -283,6 +279,12 @@ struct bitmap_t *bitmap_alloc_from_list(const char *list, size_t max_size_bits)
 			range_last = range_first;
 		}
 
+		if (range_first > range_last) {
+			const long range_tmp = range_first;
+			range_first = range_last;
+			range_last = range_tmp;
+		}
+
 		/* Set all bits in range */
 		for (bit = range_first; bit <= range_last; bit++)
 			bitmap_set(bit, set);
@@ -296,7 +298,7 @@ struct bitmap_t *bitmap_alloc_from_list(const char *list, size_t max_size_bits)
 
 struct bitmap_t *bitmap_alloc_complement(const struct bitmap_t *set)
 {
-	struct bitmap_t * const comp_set = bitmap_alloc_zero(set->max_size_bits);
+	struct bitmap_t * const comp_set = bitmap_alloc_zero();
 	const int nr_bits = set->size_bits;
 	int bit;
 
@@ -308,10 +310,9 @@ struct bitmap_t *bitmap_alloc_complement(const struct bitmap_t *set)
 	return comp_set;
 }
 
-static struct bitmap_t *alloc_from_mask(const char *mask, char ignore_char,
-	size_t max_size_bits)
+static struct bitmap_t *alloc_from_mask(const char *mask, char ignore_char)
 {
-	struct bitmap_t * const set = bitmap_alloc_zero(max_size_bits);
+	struct bitmap_t * const set = bitmap_alloc_zero();
 	const char *curr;
 	int bit = 0;
 
@@ -345,15 +346,14 @@ static struct bitmap_t *alloc_from_mask(const char *mask, char ignore_char,
 	return set;
 }
 
-struct bitmap_t *bitmap_alloc_from_mask(const char *mask, size_t max_size_bits)
+struct bitmap_t *bitmap_alloc_from_mask(const char *mask)
 {
-	return alloc_from_mask(mask, '\0', max_size_bits);
+	return alloc_from_mask(mask, '\0');
 }
 
-struct bitmap_t *bitmap_alloc_from_u32_list(const char *mlist,
-					size_t max_size_bits)
+struct bitmap_t *bitmap_alloc_from_u32_list(const char *mlist)
 {
-	return alloc_from_mask(mlist, ',', max_size_bits);
+	return alloc_from_mask(mlist, ',');
 }
 
 
@@ -361,7 +361,7 @@ struct bitmap_t *bitmap_alloc_filter_out(const struct bitmap_t *base,
 		const struct bitmap_t *filter)
 {
 	size_t bit;
-	struct bitmap_t *new_set = bitmap_alloc_zero(base->size_bits);;
+	struct bitmap_t *new_set = bitmap_alloc_zero();
 
 	if (base->size_bits < filter->size_bits)
 		fail("%s: Internal error: Base smaller than filter", __func__);
@@ -391,7 +391,7 @@ int bitmap_next_bit(int previous_bit, const struct bitmap_t *set)
 struct bitmap_t *bitmap_and(struct bitmap_t *first, struct bitmap_t *second)
 {
 	const size_t nr_bits = MAX(first->size_bits, second->size_bits);
-	struct bitmap_t *result = bitmap_alloc_zero(nr_bits);
+	struct bitmap_t *result = bitmap_alloc_zero();
 	size_t bit;
 
 	for (bit = 0; bit < nr_bits; bit++)
@@ -403,7 +403,7 @@ struct bitmap_t *bitmap_and(struct bitmap_t *first, struct bitmap_t *second)
 struct bitmap_t *bitmap_xor(struct bitmap_t *first, struct bitmap_t *second)
 {
 	const size_t nr_bits = MAX(first->size_bits, second->size_bits);
-	struct bitmap_t *result = bitmap_alloc_zero(nr_bits);
+	struct bitmap_t *result = bitmap_alloc_zero();
 	size_t bit;
 
 	for (bit = 0; bit < nr_bits; bit++)

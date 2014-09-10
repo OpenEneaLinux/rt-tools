@@ -30,22 +30,15 @@
 
 #include <sys/types.h>
 
+#ifdef HAVE_LTTNG
+#  include <lttng/tracef.h>
+#endif
+
 #define STR(x) #x
 #define STRSTR(x) STR(x)
 
-/*
- * For those believing in printf debugging, lttng is an alternative. Use
- * TRACEF() macro like a printf() statement to do the debugging. See
- * README files for more details.
- */
-#ifdef HAVE_LTTNG
-#  include <lttng/tracef.h>
-#  define TRACEF(fmt, ...) tracef("Trace: " __FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt, __func__, ##__VA_ARGS__)
-#else
-#  define TRACEF(...)
-#endif
-
 extern int option_verbose;
+extern const char *parse_scope;
 
 extern void std_fail(const char *format, ...);
 extern void std_info(const char *format, ...);
@@ -53,31 +46,39 @@ extern void std_debug(const char *format, ...);
 extern void *checked_malloc(size_t size);
 extern void *checked_realloc(void *old_alloc, size_t new_size);
 
+#define DO_LOG(func, fmt, ...) \
+	do { \
+		if (option_verbose > 1) \
+			func(__FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt "\n", __func__, ##__VA_ARGS__); \
+		else \
+			func(fmt "\n", ##__VA_ARGS__); \
+	} while (0)
+
 #ifdef HAVE_LTTNG
 
 #  define fail(fmt, ...)                        \
         do {                                    \
             tracef("Fail: "  __FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt, __func__, ##__VA_ARGS__); \
-            std_fail("Fail: "  __FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt "\n", __func__, ##__VA_ARGS__);\
+	    DO_LOG(std_fail, fmt, ##__VA_ARGS__); \
         } while (0)
 
 #  define info(fmt, ...)                        \
         do {                                    \
             tracef("Info: "  __FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt, __func__, ##__VA_ARGS__); \
-            std_info(fmt "\n", ##__VA_ARGS__);  \
+            DO_LOG(std_info, fmt, ##__VA_ARGS__); \
         } while (0)
 
 #  define debug(fmt, ...)                       \
         do {                                    \
-            tracef("Debug: "  __FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt, __func__, ##__VA_ARGS__); \
-            std_debug(fmt "\n", ##__VA_ARGS__); \
+            tracef("Debug: " __FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt, __func__, ##__VA_ARGS__); \
+            DO_LOG(std_debug, fmt, ##__VA_ARGS__); \
         } while (0)
 
 #else
 
-#  define fail(fmt, ...) std_fail("Fail: "  __FILE__ ":" STRSTR(__LINE__) ": %s(): " fmt "\n", __func__, ##__VA_ARGS__)
-#  define info(...) std_info(__VA_ARGS__)
-#  define debug(...) std_debug(__VA_ARGS__)
+#  define fail(fmt, ...) DO_LOG(std_fail, fmt, ##__VA_ARGS__)
+#  define info(...) DO_LOG(std_info, fmt, ##__VA_ARGS__)
+#  define debug(...) DO_LOG(std_debug, fmt, ##__VA_ARGS__)
 
 #endif
 #endif
