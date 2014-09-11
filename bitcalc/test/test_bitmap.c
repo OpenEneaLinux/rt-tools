@@ -34,7 +34,7 @@
 /* Run prior to each test case */
 void checked_setup()
 {
-	option_verbose = 0;
+	option_verbose = 99;
 }
 
 /* Run after each test case */
@@ -44,9 +44,9 @@ void checked_teardown()
 
 /*
  * Checks that bitmap_alloc_zero() actually zeroes the bit field.
- * Checks that bitmap_set() sets correct bits according to bitmap_isset().
+ * Checks that bitmap_set_bit() sets correct bits according to bitmap_isset().
  */
-START_TEST(test_bitmap_set)
+START_TEST(test_bitmap_set_bit)
 {
 	static const int first_bit_set = 0;
 	static const int last_bit_set = 4002;
@@ -61,7 +61,7 @@ START_TEST(test_bitmap_set)
 
 	/* Set bits within range */
 	for (bit = first_bit_set; bit <= last_bit_set; bit++)
-		bitmap_set(bit, set);
+		bitmap_set_bit(bit, 1, set);
 
 	/* Check that only the bits within the range are set */
 	for (bit = 0; (unsigned) bit < (set->size_bits + 5); bit++)
@@ -262,17 +262,17 @@ START_TEST(test_bitmap_bit_count)
 	count = bitmap_bit_count(set);
 	ck_assert_msg(count == 0, "count=%d, expected 0", count);
 
-	bitmap_set(0, set);
+	bitmap_set_bit(0, 1, set);
 	count = bitmap_bit_count(set);
 	ck_assert_msg(count == 1,
 		"count=%d, expected 1", count);
 
-	bitmap_set(64, set);
+	bitmap_set_bit(64, 1, set);
 	count = bitmap_bit_count(set);
 	ck_assert_msg(count == 2,
 		"count=%d, expected 2", count);
 
-	bitmap_set(127, set);
+	bitmap_set_bit(127, 1, set);
 	count = bitmap_bit_count(set);
 	ck_assert_msg(count == 3,
 		"count=%d, expected 3", count);
@@ -283,6 +283,74 @@ START_TEST(test_bitmap_bit_count)
 }
 END_TEST
 
+void assert_string_equal_ignore_comma(const char *s1, const char *s2)
+{
+    const char * const s1_original = s1;
+    const char * const s2_original = s2;
+
+	while (*s1 != '\0') {
+		if (*s1 == ',') {
+            s1++;
+			continue;
+        }
+		if (*s2 == ',') {
+            s2++;
+			continue;
+        }
+
+		ck_assert_msg(*s1 == *s2, "s1='%s', s2='%s', failed at s1 index: %d, s2 index: %d", s1_original, s2_original, s1 - s1_original, s2 - s2_original);
+
+        s1++;
+        s2++;
+	}
+}
+
+START_TEST(test_bitmap_u32list)
+{
+	int set_bit;
+
+	info("%s: Test case entry", __func__);
+
+	for (set_bit = 0; set_bit < 1025; set_bit+=3) {
+		struct bitmap_t *set;
+		char *str;
+		struct bitmap_t *set2;
+		char *str2;
+
+		debug("set_bit: %d", set_bit);
+		set = bitmap_alloc_set(set_bit);
+		debug("set: %s", bitmap_hex(set));
+		str = bitmap_u32list(set);
+
+		ck_assert(*str != ',');
+		ck_assert(str[strlen(str) - 1] != ',');
+
+		assert_string_equal_ignore_comma(str, bitmap_hex(set));
+
+		debug("str: %s", str);
+		set2 = bitmap_alloc_from_u32_list(str);
+		str2 = bitmap_u32list(set2);
+
+		ck_assert_msg(strcmp(str, str2) == 0, "'%s' != '%s'", str, str2);
+
+		bitmap_free(set);
+		bitmap_free(set2);
+		free(str);
+		free(str2);
+	}
+}
+END_TEST
+
+START_TEST(test_bitmap_u32list_2)
+{
+    const char * const str = "00010203,04050607,08090a0b,0c0d0e0f,fcfdfeff";
+    struct bitmap_t *set = bitmap_alloc_from_u32_list(str);
+    char *str2 = bitmap_u32list(set);
+
+    ck_assert_msg(strcmp(str, str2) == 0, "'%s' != '%s'", str, str2);
+}
+END_TEST
+
 Suite *
 suite_bitmap(void)
 {
@@ -290,7 +358,7 @@ suite_bitmap(void)
 
 	TCase *tc_core = tcase_create("Core");
 	tcase_add_checked_fixture(tc_core, checked_setup, checked_teardown);
-	tcase_add_test(tc_core, test_bitmap_set);
+	tcase_add_test(tc_core, test_bitmap_set_bit);
 	tcase_add_test(tc_core, test_bitmap_alloc_set);
 	tcase_add_test(tc_core, test_bitmap_hex_from_list);
 	tcase_add_test(tc_core, test_bitmap_alloc_complement);
@@ -300,6 +368,8 @@ suite_bitmap(void)
 	tcase_add_test(tc_core, test_bitmap_list_1);
 	tcase_add_test(tc_core, test_bitmap_list_2);
 	tcase_add_test(tc_core, test_bitmap_bit_count);
+	tcase_add_test(tc_core, test_bitmap_u32list);
+    tcase_add_test(tc_core, test_bitmap_u32list_2);
 	suite_add_tcase(s, tc_core);
 
 	return s;

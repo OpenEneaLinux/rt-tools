@@ -51,3 +51,17 @@ do_test (bitcalc_version "--version" "bitcalc 1.0")
 do_test (bitcalc_V "-V" "bitcalc 1.0")
 do_test (bitcalc_example1 "#1-2,4-5 #2-4 xor" "2a")
 
+add_test (bitcalc_example_stdin sh -c "echo '#1-2,4-5 #2-4 xor' | ../src/bitcalc --file=-")
+set_tests_properties (bitcalc_example_stdin PROPERTIES PASS_REGULAR_EXPRESSION "2a")
+
+add_test (bitcalc_all_types ../src/bitcalc "0x4 #0-1,3-4 %ffff,fffffffc and xor")
+set_tests_properties (bitcalc_all_types PROPERTIES PASS_REGULAR_EXPRESSION "00000000001c")
+add_test (bitcalc_format_list_long ../src/bitcalc --format=list 0xfe)
+set_tests_properties (bitcalc_format_list_long PROPERTIES PASS_REGULAR_EXPRESSION "1-7")
+add_test (bitcalc_format_list_short ../src/bitcalc -Flist 0xfe)
+set_tests_properties (bitcalc_format_list_short PROPERTIES PASS_REGULAR_EXPRESSION "1-7")
+add_test (bitcalc_format_u32list_long ../src/bitcalc --format=u32list 0xffffffff88888888)
+set_tests_properties (bitcalc_format_u32list_long PROPERTIES PASS_REGULAR_EXPRESSION "ffffffff,88888888")
+add_test (bitcalc_format_u32list_short ../src/bitcalc -Fu32list 0xffffffff88888888)
+set_tests_properties (bitcalc_format_u32list_short PROPERTIES PASS_REGULAR_EXPRESSION "ffffffff,88888888")
+

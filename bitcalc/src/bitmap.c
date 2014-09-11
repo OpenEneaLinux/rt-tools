@@ -35,6 +35,14 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <sys/sysinfo.h>
+#include <assert.h>
+
+#ifndef NDEBUG
+#include <ctype.h>
+#endif
+
+#define MAX(a,b) ((a) > (b)) ? (a) : (b)
+#define MIN(a,b) ((a) < (b)) ? (a) : (b)
 
 /* #define VERBOSE_DEBUG */
 
@@ -103,11 +111,6 @@ void bitmap_set_bit(int bit, int value, struct bitmap_t *set)
 #endif
 }
 
-void bitmap_set(int bit, struct bitmap_t *set)
-{
-	bitmap_set_bit(bit, 1, set);
-}
-
 struct bitmap_t *bitmap_alloc_set(int bit)
 {
 	struct bitmap_t *set = bitmap_alloc_zero();
@@ -115,7 +118,7 @@ struct bitmap_t *bitmap_alloc_set(int bit)
 	if (bit < 0)
 		fail("%s: Illegal bit index %d", __func__, bit);
 
-	bitmap_set(bit, set);
+	bitmap_set_bit(bit, 1, set);
 
 	return set;
 }
@@ -232,9 +235,7 @@ char *bitmap_list(const struct bitmap_t *set)
 				curr_idx, size_alloced, first_bit,
 				last_bit, str);
 
-			if (bytes_needed >= (size_alloced - curr_idx))
-				fail("bitmap_list(): Internal error: Did not allocate enough. bytes_needed=%d, size_alloced=%d, curr_idx=%d",
-					bytes_needed, size_alloced, curr_idx);
+			assert(bytes_needed < (size_alloced - curr_idx));
 		}
 
 		curr_idx += bytes_needed;
@@ -245,6 +246,43 @@ char *bitmap_list(const struct bitmap_t *set)
 		str = checked_malloc(1);
 		str[0] = '\0';
 	}
+	return str;
+}
+
+char *bitmap_u32list(const struct bitmap_t *set)
+{
+	int bit;
+	char *str = checked_malloc(set->size_bits + (set->size_bits / 32) + 1);
+	size_t str_idx = 0;
+	char ch = 0;
+	int has_written = 0;
+
+	for (bit = (int) set->size_bits - 1; bit >= 0; bit--) {
+		const int nibble = bit % 4;
+
+		if (bitmap_isset(bit, set))
+			ch |= (1 << nibble);
+
+        /* Finished this nibble, write the character and start new nibble */
+		if (nibble == 0) {
+			if (ch < 10)
+				str[str_idx] = '0' + ch;
+			else
+				str[str_idx] = 'a' + ch - 10;
+
+			assert(isalnum(str[str_idx]));
+			str_idx++;
+			ch = 0;
+			has_written = 1;
+		}
+		
+		/* Write , at 32 bit interval, but avoid starting or ending with , */
+		if (has_written && (bit % 32 == 0) && (bit != 0))
+			str[str_idx++] = ',';
+	}
+
+	str[str_idx] = '\0';
+
 	return str;
 }
 
@@ -287,7 +325,7 @@ struct bitmap_t *bitmap_alloc_from_list(const char *list)
 
 		/* Set all bits in range */
 		for (bit = range_first; bit <= range_last; bit++)
-			bitmap_set(bit, set);
+			bitmap_set_bit(bit, 1, set);
 
 		if (*list == ',')
 			list++;
@@ -304,7 +342,7 @@ struct bitmap_t *bitmap_alloc_complement(const struct bitmap_t *set)
 
 	for (bit = 0; bit < nr_bits; bit++) {
 		if (! bitmap_isset(bit, set))
-			bitmap_set(bit, comp_set);
+			bitmap_set_bit(bit,! bitmap_isset(bit, set), comp_set);
 	}
 
 	return comp_set;
@@ -338,8 +376,7 @@ static struct bitmap_t *alloc_from_mask(const char *mask, char ignore_char)
 			fail("%s: Character '%c' is not legal in hexadecimal mask", mask, *curr);
 
 		for (; bit < (starting_bit + 4); bit++) {
-			if (val & (1 << (bit - starting_bit)))
-				bitmap_set(bit, set);
+			bitmap_set_bit(bit, val & (1 << (bit - starting_bit)), set);
 		}
 	}
 
@@ -356,7 +393,6 @@ struct bitmap_t *bitmap_alloc_from_u32_list(const char *mlist)
 	return alloc_from_mask(mlist, ',');
 }
 
-
 struct bitmap_t *bitmap_alloc_filter_out(const struct bitmap_t *base,
 		const struct bitmap_t *filter)
 {
@@ -367,8 +403,9 @@ struct bitmap_t *bitmap_alloc_filter_out(const struct bitmap_t *base,
 		fail("%s: Internal error: Base smaller than filter", __func__);
 
 	for (bit = 0; bit < base->size_bits; bit++)
-		if (bitmap_isset(bit, base) && !bitmap_isset(bit, filter))
-			bitmap_set(bit, new_set);
+		bitmap_set_bit(bit,
+			bitmap_isset(bit, base) && !bitmap_isset(bit, filter),
+			new_set);
 
 	return new_set;
 }
@@ -385,8 +422,6 @@ int bitmap_next_bit(int previous_bit, const struct bitmap_t *set)
 
 	return -1;
 }
-
-#define MAX(a,b) ((a) > (b)) ? (a) : (b)
 
 struct bitmap_t *bitmap_and(struct bitmap_t *first, struct bitmap_t *second)
 {

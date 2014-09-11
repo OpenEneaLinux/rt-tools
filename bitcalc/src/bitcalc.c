@@ -39,6 +39,14 @@
 
 #define BITMAP_STACK_GROW_SIZE 10
 
+enum bitmap_format_t {
+	format_mask,
+	format_list,
+	format_u32list
+};
+
+static enum bitmap_format_t display_format = format_mask;
+
 static struct bitmap_t **bitmap_stack = NULL;
 static size_t bitmap_stack_depth = 0;
 static size_t bitmap_stack_depth_max = 0;
@@ -92,10 +100,29 @@ static void version(void)
 	exit(0);
 }
 
+static char *bitmap_str(const struct bitmap_t *set)
+{
+	char *str;
+
+	switch (display_format) {
+	case format_mask:
+		str = bitmap_hex(set);
+		break;
+	case format_list:
+		str = bitmap_list(set);
+		break;
+	case format_u32list:
+		str = bitmap_u32list(set);
+        break;
+	}
+
+	return str;
+}
+
 static void push_bitmap(struct bitmap_t *entry)
 {
 	if (option_verbose > 2) {
-		char *mask = bitmap_hex(entry);
+		char *mask = bitmap_str(entry);
 		debug("Pushing bitmap: %s\n", mask);
 		free(mask);
 	}
@@ -118,7 +145,7 @@ static struct bitmap_t *pop_bitmap(void)
 	bitmap_stack_depth--;
 
 	if (option_verbose > 2) {
-		char *mask = bitmap_hex(bitmap_stack[bitmap_stack_depth]);
+		char *mask = bitmap_str(bitmap_stack[bitmap_stack_depth]);
 		debug("Popping bitmap: %s\n", mask);
 		free(mask);
 	}
@@ -156,6 +183,9 @@ static void execute_token(const char *token)
 		 * hexadecimal values */
 		parse_scope = "list";
 		push_bitmap(bitmap_alloc_from_list(&token[1]));
+	} else if (*token == '%') {
+		parse_scope = "u32 list";
+		push_bitmap(bitmap_alloc_from_u32_list(&token[1]));
 	} else if (strcmp(token, "and") == 0) {
 		execute_binary_operator("binary operator 'and'",
 					bitmap_and);
@@ -207,9 +237,10 @@ int main(int argc, char *argv[])
 		{ "verbose", no_argument,       NULL, 'v' },
 		{ "version", no_argument,       NULL, 'V' },
 		{ "file",    required_argument, NULL, 'f' },
+		{ "format",  required_argument, NULL, 'F' },
 		{ NULL,      0,                 NULL, '\0'}
 	};
-	static const char short_options[] = "hvVf";
+	static const char short_options[] = "hvVf:F:";
 	int c;
 	struct bitmap_t *item;
 	FILE *stream;
@@ -243,6 +274,16 @@ int main(int argc, char *argv[])
 						optarg, strerror(errno));
 			}
 			break;
+		case 'F':
+			if (strcmp(optarg, "mask") == 0)
+				display_format = format_mask;
+			else if (strcmp(optarg, "list") == 0)
+				display_format = format_list;
+			else if (strcmp(optarg, "u32list") == 0)
+				display_format = format_u32list;
+			else
+				fail("%s: %s is an unknown format", argv[optind], optarg);
+			break;
 		case '?':
 			exit(1);
 		default:
@@ -257,7 +298,7 @@ int main(int argc, char *argv[])
 		(bitmap_stack_depth == 1) ? "" : "s");
 	first = 1;
 	for (item = pop_bitmap(); item != NULL; item = pop_bitmap()) {
-		char * const bitmap = bitmap_hex(item);
+		char * const bitmap = bitmap_str(item);
 		printf("%s%s", first ? "" : " ", bitmap);
 		bitmap_free(item);
 		first = 0;
