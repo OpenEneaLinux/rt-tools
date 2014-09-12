@@ -36,6 +36,7 @@
 #include <errno.h>
 #include <string.h>
 #include <assert.h>
+#include <limits.h>
 
 #define BITMAP_STACK_GROW_SIZE 10
 
@@ -176,6 +177,26 @@ static void execute_binary_operator(
 	push_bitmap(result);
 }
 
+static int str_to_int_hex(const char *value)
+{
+    char *check;
+    const unsigned int val = strtoul(value, &check, 16);
+
+    if (value == NULL)
+        fail("Expected unsigned integer value, got null pointer");
+
+    if (value[0] == '\0')
+        fail("Expected unsigned integer value, got empty string");
+
+    if (check[0] != '\0')
+        fail("'%s': Not a valid unsigned integer value", value);
+
+    if (val > INT_MAX)
+        fail("%s: Value out of range, max is %x", value, INT_MAX);
+
+    return (int) val;
+}
+
 static void execute_token(const char *token)
 {
 	if (*token == '#') {
@@ -186,7 +207,10 @@ static void execute_token(const char *token)
 	} else if (*token == '%') {
 		parse_scope = "u32 list";
 		push_bitmap(bitmap_alloc_from_u32_list(&token[1]));
-	} else if (strcmp(token, "and") == 0) {
+    } else if (*token == '&') {
+        parse_scope = "nr bits";
+        push_bitmap(bitmap_alloc_nr_bits(str_to_int_hex(&token[1])));
+    } else if (strcmp(token, "and") == 0) {
 		execute_binary_operator("binary operator 'and'",
 					bitmap_and);
 	} else if (strcmp(token, "xor") == 0) {

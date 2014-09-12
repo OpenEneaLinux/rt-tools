@@ -123,6 +123,26 @@ struct bitmap_t *bitmap_alloc_set(int bit)
 	return set;
 }
 
+struct bitmap_t *bitmap_alloc_nr_bits(int nr_bits)
+{
+    int bit;
+    struct bitmap_t *set;
+
+    if (nr_bits == 0)
+        return bitmap_alloc_zero();
+
+    bit = nr_bits - 1;
+
+    set = bitmap_alloc_set(bit);
+
+    while (bit > 0) {
+        bit--;
+        bitmap_set_bit(bit, 1, set);
+    }
+
+    return set;
+}
+
 int bitmap_isset(int bit, const struct bitmap_t *set)
 {
 	if (bit < 0)

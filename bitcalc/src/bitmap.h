@@ -2,7 +2,7 @@
 #define BITMAP_H
 
 /*******************************************************************************
- * bitcalc_cpuset.c
+ * bitcalc_bitset.c
  */
 
 struct bitmap_t;
@@ -24,7 +24,8 @@ extern char *bitmap_u32list(const struct bitmap_t *set);
 
 
 extern struct bitmap_t *bitmap_alloc_zero();
-extern struct bitmap_t *bitmap_alloc_set(int cpu);
+extern struct bitmap_t *bitmap_alloc_set(int bit);
+extern struct bitmap_t *bitmap_alloc_nr_bits(int nr_bits);
 extern struct bitmap_t *bitmap_alloc_from_list(const char *list);
 extern struct bitmap_t *bitmap_alloc_complement(const struct bitmap_t *set);
 extern struct bitmap_t *bitmap_alloc_from_mask(const char *mask);
@@ -46,7 +47,7 @@ extern struct bitmap_t *bitmap_alloc_from_u32_list(const char *mlist);
  */
 
 
-extern int bitmap_isset(int cpu, const struct bitmap_t *set);
+extern int bitmap_isset(int bit, const struct bitmap_t *set);
 extern size_t bitmap_bit_count(const struct bitmap_t *set);
 extern int bitmap_next_bit(int previous_bit, const struct bitmap_t *set);
 
@@ -56,8 +57,8 @@ extern int bitmap_next_bit(int previous_bit, const struct bitmap_t *set);
  */
 
 
-extern void bitmap_set(int cpu, struct bitmap_t *set);
-extern void bitmap_set_bit(int cpu, int value, struct bitmap_t *set);
+extern void bitmap_set(int bit, struct bitmap_t *set);
+extern void bitmap_set_bit(int bit, int value, struct bitmap_t *set);
 extern void bitmap_free(struct bitmap_t *set);
 
 #endif

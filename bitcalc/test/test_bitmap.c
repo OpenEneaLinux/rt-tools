@@ -283,7 +283,7 @@ START_TEST(test_bitmap_bit_count)
 }
 END_TEST
 
-void assert_string_equal_ignore_comma(const char *s1, const char *s2)
+static void assert_string_equal_ignore_comma(const char *s1, const char *s2)
 {
     const char * const s1_original = s1;
     const char * const s2_original = s2;
@@ -338,16 +338,45 @@ START_TEST(test_bitmap_u32list)
 		free(str);
 		free(str2);
 	}
+
+    info("%s: Test case exit", __func__);
 }
 END_TEST
 
 START_TEST(test_bitmap_u32list_2)
 {
-    const char * const str = "00010203,04050607,08090a0b,0c0d0e0f,fcfdfeff";
-    struct bitmap_t *set = bitmap_alloc_from_u32_list(str);
-    char *str2 = bitmap_u32list(set);
+    const char *str;
+    struct bitmap_t *set;
+    char *str2;
 
+	info("%s: Test case entry", __func__);
+    str = "00010203,04050607,08090a0b,0c0d0e0f,fcfdfeff";
+    set = bitmap_alloc_from_u32_list(str);
+    str2 = bitmap_u32list(set);
     ck_assert_msg(strcmp(str, str2) == 0, "'%s' != '%s'", str, str2);
+	info("%s: Test case exit", __func__);
+}
+END_TEST
+
+static void test_bitmap_nr_bits_helper(int nr_bits)
+{
+    struct bitmap_t *set = bitmap_alloc_nr_bits(nr_bits);
+
+    ck_assert(bitmap_bit_count(set) == (size_t) nr_bits);
+    ck_assert(set->size_bits == (size_t) nr_bits);
+}
+
+START_TEST(test_bitmap_nr_bits)
+{
+	info("%s: Test case entry", __func__);
+    test_bitmap_nr_bits_helper(0);
+    test_bitmap_nr_bits_helper(1);
+    test_bitmap_nr_bits_helper(2);
+    test_bitmap_nr_bits_helper(63);
+    test_bitmap_nr_bits_helper(64);
+    test_bitmap_nr_bits_helper(1023);
+    test_bitmap_nr_bits_helper(1024);
+	info("%s: Test case exit", __func__);
 }
 END_TEST
 
@@ -370,6 +399,7 @@ suite_bitmap(void)
 	tcase_add_test(tc_core, test_bitmap_bit_count);
 	tcase_add_test(tc_core, test_bitmap_u32list);
     tcase_add_test(tc_core, test_bitmap_u32list_2);
+    tcase_add_test(tc_core, test_bitmap_nr_bits);
 	suite_add_tcase(s, tc_core);
 
 	return s;
