@@ -760,7 +760,7 @@ run () {
 
     rt_mask=$(fgrep -w Cpus_allowed "/proc/$$/status" | cut -f 2)
 
-    if [ $cpumask -ne 0 ]; then
+    if [ -n "$cpumask" ]; then
         if [ $(${bitcalc} $cpumask $rt_mask and) -eq $cpumask ]; then
             taskset -p $(printf "0x%s" "$cpumask") "$$" 2>&1 > /dev/null
         else
