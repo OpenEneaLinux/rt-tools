@@ -36,6 +36,9 @@
 #include <limits.h>
 #include <sys/sysinfo.h>
 #include <assert.h>
+#include <stdint.h>
+#include <string.h>
+#include <stdio.h>
 
 #ifndef NDEBUG
 #include <ctype.h>

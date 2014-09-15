@@ -154,6 +154,24 @@ static struct bitmap_t *pop_bitmap(void)
 	return bitmap_stack[bitmap_stack_depth];
 }
 
+static void execute_void_unary_operator(
+    const char *name,
+    void (*func)(struct bitmap_t *first)
+    )
+{
+    struct bitmap_t *first;
+
+    parse_scope = name;
+    debug("%s: Identified as %s", name);
+
+    if (bitmap_stack_depth < 1)
+        fail("Need one value, but none available");
+
+    first = pop_bitmap();
+    func(first);
+    bitmap_free(first);
+}
+
 static void execute_binary_operator(
 	const char *name,
 	struct bitmap_t * (*func)(struct bitmap_t *first, struct bitmap_t *second)
@@ -197,6 +215,12 @@ static int str_to_int_hex(const char *value)
     return (int) val;
 }
 
+static void print_bitmap_bit_count(struct bitmap_t *set)
+{
+    const int count = bitmap_bit_count(set);
+    printf("%d", count);
+}
+
 static void execute_token(const char *token)
 {
 	if (*token == '#') {
@@ -216,7 +240,10 @@ static void execute_token(const char *token)
 	} else if (strcmp(token, "xor") == 0) {
 		execute_binary_operator("binary operator 'xor'",
 					bitmap_xor);
-	} else {
+    } else if (strcmp(token, "print-bit-count") == 0) {
+        execute_void_unary_operator("unary operator 'print-bit-count'",
+                print_bitmap_bit_count);
+    } else {
 		parse_scope = "mask";
 		debug("%s: Identified as %s", token, parse_scope);
 		push_bitmap(bitmap_alloc_from_mask(token));

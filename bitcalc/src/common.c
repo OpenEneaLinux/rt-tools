@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/sysinfo.h>
+#include <string.h>
 
 int option_verbose = 0;
 const char *parse_scope = NULL;

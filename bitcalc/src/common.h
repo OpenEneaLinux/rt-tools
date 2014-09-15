@@ -77,8 +77,8 @@ extern void *checked_realloc(void *old_alloc, size_t new_size);
 #else
 
 #  define fail(fmt, ...) DO_LOG(std_fail, fmt, ##__VA_ARGS__)
-#  define info(...) DO_LOG(std_info, fmt, ##__VA_ARGS__)
-#  define debug(...) DO_LOG(std_debug, fmt, ##__VA_ARGS__)
+#  define info(fmt, ...) DO_LOG(std_info, fmt, ##__VA_ARGS__)
+#  define debug(fmt, ...) DO_LOG(std_debug, fmt, ##__VA_ARGS__)
 
 #endif
 #endif
