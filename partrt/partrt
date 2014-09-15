@@ -1,0 +1,894 @@
+#!/bin/sh -eu
+
+# Copyright (c) 2013,2014 by Enea Software AB
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Enea Software AB nor the
+#       names of its contributors may be used to endorse or promote products
+#       derived from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+version () {
+    cat <<EOF
+partrt 1.2
+
+Copyright (C) 2013,2014 by Enea Software AB.
+This is free software; see the source for copying conditions.  There is no
+warranty; not even for merchantability or fitness for a particular purpose,
+to the extent permitted by law.
+EOF
+}
+
+usage () {
+    cat <<EOF
+partrt - Create real time CPU partitions on SMP Linux
+
+Usage:
+partrt [options] <cmd>
+partrt [options] create [cmd-options] [cpumask]
+partrt [options] undo [cmd-options]
+partrt [options] run [cmd-options] <partition> <command>
+partrt [options] move [cmd-options] <pid> <partition>
+partrt [options] list [cmd-options]
+
+The purpose of partrt is to administrate CPU partitions/domains with different
+requirements on OS jitter and real-time performance. partrt requires that the
+Linux kernel supports SMP and cpusets. Please see the Linux cpuset
+documentation for more information.
+
+When the "create" sub-command is given, a real time partition and a non-real
+time partition will be created. Then partrt will try to move all tasks into the
+non-real time partition. Some kernel threads have an affinity requirement that
+prohibits such a move, these will be left in the cpuset root.
+
+Read more about reducing OS jitter in the Linux kernel documentation:
+https://www.kernel.org/doc/Documentation/kernel-per-CPU-kthreads.txt
+
+Options:
+
+        -v           Produce informational message to stderr
+
+        -V           Show version information and exit.
+
+        -x           Trace script execution
+
+        -r NAME      Name the real time partition 'NAME'
+                     (default: $DEFAULT_RT_PARTITION)
+
+        -n NAME      Name the non-real time partition 'NAME'
+                     (default: $DEFAULT_NRT_PARTITION)
+
+If <cmd> is create:
+
+        Using prtrt with the create command will divide the available CPUs
+        into two partitions. One partition "rt" (default name) and one
+        partition "nrt" (default name). partrt will try to move sources of
+        jitter from the "rt" CPUs to the "nrt" CPUs.
+
+        The old environment will be saved in /tmp/partrt_env
+
+        [cpumask]:   cpumask that specifies CPUs for the real time partition.
+                     Not needed if the -n flag is passed.
+
+        cmd-options:
+
+        -a           Disable writeback workqueue NUMA affinity
+
+        -b           Do not migrate block workqueue when creating a new
+                     partition
+
+        -c           Do not disable machine check (x86)
+
+        -d           Do not defer ticks when creating a new partition
+
+        -h           Show this help text and exit.
+
+        -n <node>    Use NUMA topology to configure the partitions. The CPUs
+                     and memory that belong to NUMA <node> will be exclusive
+                     to the RT partition. This flag omits the [cpumask]
+                     parameter.
+
+        -m           Do not delay vmstat housekeeping when creating a
+                     new partition
+
+        -r           Do not restart hotplug CPUs when creating a new
+                     partition
+
+        -t           Do not disable real-time throttling when creating a
+                     new partition
+
+        -w           Do not disable watchdog timer when creating a new
+                     partition
+
+If <cmd> is undo:
+
+        Undo what the "create" command does. Will put all tasks in the root
+        cpuset and change the IRQ affinities to include all CPUs.
+
+        cmd-options:
+
+        -h           Show this help text and exit.
+
+        -s file      File containing environment configuration to be
+                     loaded. The configuration file is normally
+                     generated by the "create" sub-command
+                     (/tmp/partrt_env). If no file is provided, partrt
+                     will use default values for the environment.
+
+If <cmd> is run:
+
+        Run <command> with <options> on <partition>
+        where <partition> is expressed as a CPUSET directory
+        relative to CPUSET root.
+
+        <partition>: Name of partition to execute within.
+
+        cmd-options:
+
+        -c <cpumask>  Run task on hexadecimal <cpumask>. <cpumask> should
+                      include a subset of the CPUs of the selected partition.
+
+        -f <prio>    Use SCHED_FIFO with RT priority <prio>
+
+        -h           Show this help text and exit.
+
+        -o           Use SCHED_OTHER
+
+        -r <prio>    Use SCHED_RR with RT priority <prio>
+
+If <cmd> is move:
+
+        Changes the affinity of task <pid> to <cpumask>. Will automatically put
+        the task in the correct partition. The command will fail if <cpumask>
+        intersects with multiple partitions.
+
+        <pid>: PID of task to be moved
+
+        <partition>: Name of the partition that the task should be moved to
+
+        cmd-options:
+
+        -c <cpumask>  Run task on hexadecimal <cpumask>. <cpumask> should
+                      include a subset of the CPUs of the selected partition.
+
+        -h           Show this help text and exit.
+
+If <cmd> is list:
+
+        Display current partitions
+
+Example:
+        Create RT partition on CPU 2 and 3:
+        > partrt create 0xc
+
+        Run cyclictest on CPU 3 in the RT partition:
+        > partrt run -c 0x8 rt cyclictest -n -i 10000 -l 10000
+
+        Move cyclictest to NRT partition:
+        > partrt move "pid of cyclictest" nrt
+
+        Undo partitioning (restore environment)
+        > partrt undo
+
+EOF
+}
+
+# local CPUSET_ROOT
+
+readonly DEFAULT_CPUSET_ROOT=/sys/fs/cgroup/cpuset
+readonly DEFAULT_CPUSET_PREFIX=cpuset.
+readonly DEFAULT_RT_PARTITION=rt
+readonly DEFAULT_NRT_PARTITION=nrt
+readonly MASK_MSB=31
+readonly PARTRT_SETTINGS_FILE="/tmp/partrt_env"
+
+################
+# partrt options
+################
+rt_partition=$DEFAULT_RT_PARTITION
+nrt_partition=$DEFAULT_NRT_PARTITION
+verbose=false
+
+##################
+# Helper functions
+##################
+
+# Print message and exit abnormally
+# Will try to restore environment if called from create() scope
+exit_msg () {
+    echo "partrt: Failed execution: $1" >&2
+    exit 1
+}
+
+bitcalc=$( which bitcalc ) || exit_msg "bitcalc: Application not found in any search path, please install it"
+
+# Print depending on verbosity level
+# $1 Message
+verbose_printf () {
+    [ "$verbose" = true ] || return 0
+    local fmt="$1"
+    shift
+    printf -- "${fmt}\n" $@ >&2
+}
+
+# Used to check options that take an argument. It exits if the options is
+# missing, otherwise it returns the argument.
+# $1 = the option
+# $2 = next word in the scripts parameter list (possibly the options argument)
+#
+# Depends on the following global variables:
+# CMD
+#
+# Returns on stdio
+# the argument
+get_arg()
+{
+    case "$2" in
+	-*) exit_msg "Option $1 requires an argument"
+    esac
+    if [ -z $2 ]; then
+        exit_msg "Option $1 requires an argument"
+    fi
+    printf "%s" "$2"
+}
+
+
+# Writes values to file and does proper error checking
+# $1 File
+# $2 Value
+write_to_file () {
+    local file=$1
+    local val=$2
+
+    if [ -e $file ]; then
+        echo $val > $file || exit_msg "Failed to write $val into $file"
+        verbose_printf "echo $val > $file"
+    else
+        verbose_printf "$file: Does not exist"
+    fi
+}
+
+# Log preveous value to file and apply new value
+# $1 - File
+# $2 - Value
+log_prev_and_apply () {
+    local file=$1
+    local val=$2
+    local old_val=""
+
+    if [ -e $file ]; then
+        old_val=$(cat "$file")
+        echo $val > $file
+        if [ $? -ne 0 ]; then
+            verbose_printf "Failed to write $1 into $2"
+        else
+            echo "$file $old_val" >> $PARTRT_SETTINGS_FILE
+            verbose_printf "$file $old_val > $PARTRT_SETTINGS_FILE"
+        fi
+    else
+        verbose_printf "$file: Does not exist"
+    fi
+}
+
+# Try hard to create a directory by mounting a tmpfs in the parent directory
+# (given that the parent directory is empty).
+create_dir_stubborn () {
+    local DIR=$1
+    local DIR_NO_SLASH=$DIR
+    local PARENT
+
+    # Try to just create the directory
+    if mkdir $DIR &> /dev/null; then
+        return 0
+    fi
+
+    # Remove the last directory to get the parent directory
+    while ! [ ${DIR_NO_SLASH%/} = $DIR_NO_SLASH ]; do
+        DIR_NO_SLASH=${DIR_NO_SLASH%/}
+    done
+    PARENT=${DIR_NO_SLASH%/*}
+
+    # Make sure the parent exists
+    if ! [ -d $PARENT ]; then
+        exit_msg "$DIR: Unable to create directory, parent directory does not exist"
+    fi
+
+    # Is it safe to mount a tmpfs over the parent dir?
+    if [ -n "$(ls -A $PARENT)" ]; then
+        exit_msg "$DIR: Unable to create directory, and parent directory is not empty"
+    fi
+
+    # Try the mount
+    if ! mount -t tmpfs none $PARENT; then
+        exit_msg "$DIR: Unable to make parent writable by mounting tmpfs in place"
+    fi
+
+    # The mkdir should now succeed
+    if ! mkdir $DIR; then
+        exit_msg "$DIR: Unable to create directory in tmpfs parent"
+    fi
+
+    return 0
+}
+
+get_cpuset_root () {
+    grep -q -s cpuset /proc/filesystems || exit_msg "Kernel is lacking support for cpuset"
+
+    if [ -d "${DEFAULT_CPUSET_ROOT}" ]; then
+        verbose_printf "$DEFAULT_CPUSET_ROOT: Using existing mount"
+    else
+        verbose_printf "$DEFAULT_CPUSET_ROOT: Mounting CPUSET"
+        if ! [ -e $DEFAULT_CPUSET_ROOT ]; then
+            create_dir_stubborn $DEFAULT_CPUSET_ROOT
+        fi
+        mount -t cgroup -o cpuset none $DEFAULT_CPUSET_ROOT || exit_msg "$DEFAULT_CPUSET_ROOT: Could not mount cpuset"
+    fi
+
+    echo "$DEFAULT_CPUSET_ROOT"
+}
+
+# pass CPUSET_ROOT as first argument
+get_cpuset_prefix() {
+    if [ -e $CPUSET_ROOT/cpus ]; then
+        echo ""
+    elif [ -e $CPUSET_ROOT/${DEFAULT_CPUSET_PREFIX}cpus ]; then
+        echo $DEFAULT_CPUSET_PREFIX
+    else
+        exit_msg "Error: don't know what prefix to use"
+    fi
+}
+
+# Print the name of given PID/TID to stdout.
+# $1 = PID/TID
+pid_to_name () {
+    head -n 1 /proc/$1/status | cut -f 2
+}
+
+# Depends on the following global variables:
+# CPUSET_ROOT
+#
+# Move given task to given partition
+# $1 = PID/TID
+# $2 = Partition, empty if root
+move_task () {
+    if echo $1 > $CPUSET_ROOT/${2:-}/tasks 2>/dev/null; then
+        [ "$verbose" = true ] && verbose_printf "$1 ($(pid_to_name $1)): Moved to ${2:-root}"
+    else
+        [ "$verbose" = true ] && verbose_printf "$1 ($(pid_to_name $1)): Could not be moved to ${2:-root}"
+    fi
+
+    # Make sure to return success, even if some move failed
+    return 0
+}
+
+# Set IRQ affinity on given IRQ
+# $1 - IRQ vector number
+# $2 - Mask to use for smp_affinity
+set_irq_affinity () {
+    local vector="$1"
+    local mask="$2"
+
+    if printf "%s" $mask > /proc/irq/$vector/smp_affinity 2>/dev/null; then
+        verbose_printf "Vector $vector: Setting affinity mask 0x%s" $mask
+    else
+        verbose_printf "Vector $vector: Failed setting affinity mask 0x%s" $mask
+    fi
+}
+
+# Set a new affinity mask on all existing and future IRQs
+# $1 - mask
+irq_new_mask () {
+    mask=$1
+
+    verbose_printf "Setting IRQ affinity to mask 0x%s" $mask
+
+    # Set affinity to interrupts registered in the future
+    printf "%s" $mask > /proc/irq/default_smp_affinity
+
+    for dir in /proc/irq/*; do
+        [ -d "$dir" ] && set_irq_affinity "$(basename $dir)" $mask
+    done
+
+    # Make sure to return success, even if some move failed
+    return 0
+}
+
+#######################
+# Partition sub-command
+#######################
+
+# TODO: Add intelligent NUMA handling
+
+create () {
+    CPUSET_ROOT=$(get_cpuset_root)
+    CPUSET_PREFIX=$(get_cpuset_prefix $CPUSET_ROOT)
+    local isolated_cpu_list=""
+    local nonisolated_cpu_list=""
+    local datestr=$( date +"%Y-%m-%d--%r" )
+    local rt_mask=0
+    local nrt_mask=0
+    local available_cpu_mask=$( ${bitcalc} '&'$( nproc --all ))
+    local migrate_bwq=true
+    local disable_machine_check=true
+    local defer_ticks=true
+    local delay_vmtimers=true
+    local disable_numa_affinity=true
+    local numa_partition=false
+    local restart_hotplug=true
+    local disable_throttle=true
+    local disable_watchdog=true
+    local numa_node=0
+
+    while getopts ":abcdhmn:rtw" o; do
+        case "${o}" in
+            a) disable_numa_affinity=false;;
+            b) migrate_bwq=false;;
+            c) disable_machine_check=false;;
+            d) defer_ticks=false;;
+            h) usage; exit 0;;
+            m) delay_vmtimers=false;;
+            n) numa_partition=true; numa_node=${OPTARG};;
+            r) restart_hotplug=false;;
+            t) disable_throttle=false;;
+            w) disable_watchdog=false;;
+            \?) exit_msg "Invalid option: -${OPTARG} ";;
+            :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument";;
+        esac
+    done
+
+    shift $(( ${OPTIND} - 1 ))
+    if [ "$numa_partition" = false ]; then
+        [ -z ${1:-} ] && exit_msg "Missing mandatory cpumask"
+        rt_mask=$(${bitcalc} $1) || exit_msg "Illegal CPU mask: $rt_mask"
+    else
+        if [ -d /sys/devices/system/node/node$numa_node ]; then
+            rt_mask=$(${bitcalc} '%'$(cat /sys/devices/system/node/node$numa_node/cpumap))
+        else
+            exit_msg "NUMA node: $numa_node does not exist"
+        fi
+    fi
+
+    [ $( ${bitcalc} $rt_mask $available_cpu_mask and print-bit-count ) -eq 0 ] && exit_msg "Illegal CPU mask: $rt_mask"
+
+    isolated_cpu_list=$(${bitcalc} --format=list $rt_mask)
+    nrt_mask=$(${bitcalc} $rt_mask $available_cpu_mask xor)
+    nonisolated_cpu_list=$(${bitcalc} --format=list $nrt_mask)
+
+    # Check if there are present partitions
+    #######################################
+    [ -n "$(find $CPUSET_ROOT/* -type d)" ] && exit_msg "There are allready cpusests/partitions on the system."
+
+    # Create RT partition
+    #####################
+    if [ ! -d "$CPUSET_ROOT/$rt_partition" ]; then
+        mkdir $CPUSET_ROOT/$rt_partition
+    fi
+
+    # Allocate CPUs
+    write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}cpus $isolated_cpu_list
+
+    # Make sure RT partition is alone on these CPUs
+    write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}cpu_exclusive 1
+
+    # NUMA partitioning
+    ###################
+    if [ "$numa_partition" = true ]; then
+        write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mems $numa_node
+        write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mem_exclusive 1
+    else
+        # No particular requirements on memory handling
+        write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mems 0
+    fi
+
+    # Create NRT partition
+    #######################
+    if [ ! -d "$CPUSET_ROOT/$nrt_partition" ]; then
+        mkdir $CPUSET_ROOT/$nrt_partition
+    fi
+
+    # NUMA partitioning
+    ###################
+    if [ "$numa_partition" = true ]; then
+        nrt_nodes=$(${bitcalc} '#'$(cat /sys/devices/system/node/possible) '#'$numa_node)
+        write_to_file $CPUSET_ROOT/$nrt_partition/${CPUSET_PREFIX}mems $(${bitcalc} --format=list $nrt_nodes)
+    else
+        # No particular requirements on memory handling
+        write_to_file $CPUSET_ROOT/$nrt_partition/${CPUSET_PREFIX}mems 0
+    fi
+
+    # Allocate CPUs
+    write_to_file $CPUSET_ROOT/$nrt_partition/${CPUSET_PREFIX}cpus $nonisolated_cpu_list
+
+    # Move all tasks/processes from root partition to NRT
+    #####################################################
+    while read task; do
+        move_task $task $nrt_partition
+    done < $CPUSET_ROOT/tasks
+
+    # Disable load balancing on top level, otherwise child partition settings
+    # will not take effect
+    write_to_file $CPUSET_ROOT/${CPUSET_PREFIX}sched_load_balance 0
+
+    # Enable load balancing in NRT partition
+    write_to_file $CPUSET_ROOT/$nrt_partition/${CPUSET_PREFIX}sched_load_balance 1
+
+    # Disable load balancing in RT partition
+    write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}sched_load_balance 0
+
+    # Handle IRQs
+    irq_new_mask $nrt_mask
+
+    # Create new sttings file or overwrite the old one
+    echo "partrt_settings: $datestr" > $PARTRT_SETTINGS_FILE
+
+    # Disable real time throttling
+    ###############################
+    if [ "$disable_throttle" = true ]; then
+        log_prev_and_apply /proc/sys/kernel/sched_rt_runtime_us -1
+    fi
+
+    # Disable sched_tick_max_deferment
+    ##################################
+    if [ "$defer_ticks" = true ]; then
+        log_prev_and_apply /sys/kernel/debug/sched_tick_max_deferment -1
+    fi
+
+    # Delay vmtimer timeouts
+    ########################
+    if [ "$delay_vmtimers" = true ]; then
+        # If possible, you can try to add the following patch to your kernel:
+        # https://lkml.org/lkml/2013/9/4/379
+        # Increase timer period to 1000 seconds
+        log_prev_and_apply /proc/sys/vm/stat_interval 1000
+    fi
+
+    # Disable NUMA affinity
+    ########################
+    if [ "$disable_numa_affinity" = true ]; then
+        log_prev_and_apply /sys/bus/workqueue/devices/writeback/numa 0
+    fi
+
+    # Disable watchdog
+    ######################
+    if [ "$disable_watchdog" = true ]; then
+        log_prev_and_apply /proc/sys/kernel/watchdog 0
+    fi
+
+    # Move block device writeback workqueues
+    ########################################
+    if [ "$migrate_bwq" = true ]; then
+        log_prev_and_apply /sys/bus/workqueue/devices/writeback/cpumask $(printf "%s" $nrt_mask)
+    fi
+
+    # Disable machine check (Writing 0 to machinecheck0/check_interval will
+    # disable it for all CPUs)
+    ########################################
+    if [ "$disable_machine_check" = true ]; then
+        log_prev_and_apply /sys/devices/system/machinecheck/machinecheck0/check_interval 0
+    fi
+
+    # Turn off real time CPUs to force timers to migrate
+    ####################################################
+    if [ "$restart_hotplug" = true ]; then
+        # All CPUs should be turned off before any is started again
+        for rt_cpu in $isolated_cpu_list; do
+            write_to_file /sys/devices/system/cpu/cpu$rt_cpu/online 0
+        done
+        for rt_cpu in $isolated_cpu_list; do
+            write_to_file /sys/devices/system/cpu/cpu$rt_cpu/online 1
+        done
+
+        # Create the RT partition again
+        ###############################
+        #Allocate CPUs
+        write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}cpus $isolated_cpu_list
+        # Make sure RT partition is alone on these CPUs
+        write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}cpu_exclusive 1
+        # Disable load balancing in RT partition
+        write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}sched_load_balance 0
+
+        # NUMA partitioning
+        ###################
+        if [ "$numa_partition" = true ]; then
+            write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mems $numa_node
+            write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mem_exclusive 1
+        else
+            write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}mems 0
+        fi
+    fi
+
+    echo "System was successfylly divided into following partitions:"
+    echo "Isolated CPUs ($rt_partition):$isolated_cpu_list"
+    echo "Non-isolated CPUS ($nrt_partition):$nonisolated_cpu_list"
+}
+
+
+# $1 - path to settings file
+restore_from_file () {
+    local name
+    local val
+    local first_line=true
+
+    # Check if file exists
+    [ -e $1 ] || exit_msg "Provided configuration file: $1 does not exist"
+
+    while read name val || [ -n "${val}" ]; do
+        # Check if this is a partrt settings file
+        if [ $first_line = true ]; then
+            if [ "${name}" !=  "partrt_settings:" ]; then
+                exit_msg "Corrupt settings file: $1"
+            fi
+            first_line=false
+            continue
+        fi
+
+        if [ -e "$name" ]; then
+            verbose_printf "echo $val > $name"
+            echo $val > $name
+        else
+            verbose_printf "Failed to write $val into $name"
+        fi
+
+    done < $1
+}
+
+
+# Restore environment
+#########################
+# undo sub-command
+#########################
+# Restores environmen. Configures all IRQ and task affinities to include all
+# CPUs. It also tries to restore certan configurations from file. If no
+# configuration file is provided it defalts to some standard values.
+# $1 Settings file
+undo () {
+    CPUSET_ROOT=$(get_cpuset_root)
+    CPUSET_PREFIX=$(get_cpuset_prefix $CPUSET_ROOT)
+    local mask=$( ${bitcalc} '&'$( nproc --all ))
+    local settings_file=""
+
+    while getopts ":hs:" o; do
+        case "${o}" in
+            h) usage; exit 0 ;;
+            s) settings_file=${OPTARG};;
+            \?) exit_msg "Invalid option: ${OPTARG} " ;;
+            :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument"
+        esac
+    done
+
+    if [ -d "$CPUSET_ROOT/$rt_partition" ]; then
+        # Move from RT to root
+        while read task; do
+            move_task $task
+        done < $CPUSET_ROOT/$rt_partition/tasks
+    fi
+
+    if [ -d "$CPUSET_ROOT/$nrt_partition" ]; then
+        # Move from NRT to root
+        while read task; do
+            move_task $task
+        done < $CPUSET_ROOT/$nrt_partition/tasks
+    fi
+
+    # Enable load balancing again
+    echo 1 > $CPUSET_ROOT/${CPUSET_PREFIX}sched_load_balance || exit_msg "Could not set root partition load balancing"
+
+    # Remove created directories
+    if [ -d "$CPUSET_ROOT/$rt_partition" ]; then
+        verbose_printf "Removing rt partition"
+        rmdir $CPUSET_ROOT/$rt_partition
+    fi
+
+    if [ -d "$CPUSET_ROOT/$nrt_partition" ]; then
+        verbose_printf "Removing nrt partition"
+        rmdir $CPUSET_ROOT/$nrt_partition
+    fi
+
+    # Handle IRQs
+    #############
+
+    irq_new_mask $mask
+
+    if [ -n "$settings_file" ]; then
+        restore_from_file $settings_file
+    else
+        # Use Enea Linux default settings
+        write_to_file /proc/sys/kernel/sched_rt_runtime_us 950000
+        write_to_file /sys/kernel/debug/sched_tick_max_deferment 100
+        write_to_file /proc/sys/vm/stat_interval 1
+        write_to_file /sys/bus/workqueue/devices/writeback/numa 1
+        write_to_file /proc/sys/kernel/watchdog 1
+        write_to_file /sys/devices/system/machinecheck/machinecheck0/check_interval 300
+        write_to_file /sys/bus/workqueue/devices/writeback/cpumask $(echo $(printf "%s" $mask))
+    fi
+
+    echo "System was successfully restored"
+}
+
+#################
+# Run sub-command
+#################
+run () {
+    CPUSET_ROOT=$(get_cpuset_root)
+    CPUSET_PREFIX=$(get_cpuset_prefix $CPUSET_ROOT)
+    local sched_policy=""
+    local prio=0
+    local partition=""
+    local cpumask=""
+    local rt_mask=""
+
+    while getopts ":c:f:hor:" o; do
+        case "${o}" in
+            f|r) sched_policy="${o}"; prio=${OPTARG} ;;
+            c) cpumask=${OPTARG} ;;
+            h) usage; exit 0 ;;
+            o) sched_policy="${o}";;
+            \?) exit_msg "Invalid option: ${OPTARG} " ;;
+            :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument" ;;
+        esac
+    done
+
+    shift $(( ${OPTIND} - 1 ))
+
+    [ -z ${1:-} ] && exit_msg "Missing mandatory partition name"
+    partition=$1; shift;
+
+    [ -d "$CPUSET_ROOT/$partition" ] || exit_msg "Could not find cpuset partition: $partition"
+
+    [ -z ${1:-} ] && exit_msg "No command to execute"
+
+    write_to_file $CPUSET_ROOT/$partition/tasks $$
+
+    cpumask=$(${bitcalc} $cpumask)
+
+    rt_mask=$(fgrep -w Cpus_allowed "/proc/$$/status" | cut -f 2)
+
+    if [ $cpumask -ne 0 ]; then
+        if [ $(${bitcalc} $cpumask $rt_mask and) -eq $cpumask ]; then
+            taskset -p $(printf "0x%s" "$cpumask") "$$" 2>&1 > /dev/null
+        else
+            exit_msg "Invalid cpumask: $cpumask contains one or more CPUs that are not part of $partition"
+        fi
+    fi
+
+    if [ -z "$sched_policy" ]; then
+        exec "$@"
+    else
+        exec chrt "-$sched_policy" $prio "$@"
+    fi
+}
+
+
+#################
+# move sub-command
+#################
+
+move () {
+    CPUSET_ROOT=$(get_cpuset_root)
+    local cpumask=""
+    local rt_mask=""
+
+    while getopts ":c:h" o; do
+        case "${o}" in
+            c) cpumask=${OPTARG} ;;
+            h) usage; exit 0 ;;
+            \?) exit_msg "Invalid option: ${OPTARG} " ;;
+            :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument"
+        esac
+    done
+
+    shift $(( ${OPTIND} - 1 ))
+
+    [ -z ${1:-} ] && exit_msg "Missing mandatory task ID"
+    local pid=$1; shift;
+    [ -d /proc/$pid ] || exit_msg "Task ID $pid does not exist"
+
+    [ -z ${1:-} ] && exit_msg "Missing mandatory partition name"
+    local partition=$1; shift;
+    [ -e $CPUSET_ROOT/$partition ] || exit_msg "Partition $partition does not exist"
+
+    move_task $pid $partition
+
+    cpumask=$( ${bitcalc} $cpumask )
+
+    rt_mask=$(fgrep -w Cpus_allowed "/proc/$$/status" | cut -f 2)
+
+    if [ $cpumask -ne 0 ]; then
+        if [ $( ${bitcalc} $cpumask $rt_mask and ) -eq $cpumask ]; then
+            taskset -p $(printf "0x%s" "$cpumask") "$pid" 2>&1 > /dev/null
+        else
+            exit_msg "Invalid cpumask: $cpumask contains one or more CPUs that are not part of $partition"
+        fi
+    fi
+}
+
+#################
+# list sub-command
+#################
+
+list () {
+    CPUSET_ROOT=$(get_cpuset_root)
+    CPUSET_PREFIX=$(get_cpuset_prefix $CPUSET_ROOT)
+
+    while getopts ":h" o; do
+        case "${o}" in
+            h) usage; exit 0 ;;
+            \?) exit_msg "Invalid option: ${OPTARG} " ;;
+            :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument";;
+        esac
+    done
+
+    found_partitions=false
+    for dir in $(ls $CPUSET_ROOT); do
+        if [ -e "$CPUSET_ROOT/$dir/${CPUSET_PREFIX}cpus" ]; then
+            found_partitions=true
+            cpus=$(cat $CPUSET_ROOT/$dir/${CPUSET_PREFIX}cpus)
+            echo "Name:$dir CPUs: $cpus"
+        fi
+    done
+
+    if [ "$found_partitions" = false ]; then
+        echo "Could not find any partitions"
+    fi
+}
+
+######
+# Main
+######
+
+# Parse commoncommand line options
+##################################
+while getopts ":hn:r:vVwx" o; do
+    case "${o}" in
+        h) usage; exit 0 ;;
+        n) nrt_partition=${OPTARG};;
+        r) rt_partition=${OPTARG} ;;
+        v) verbose=true;;
+        V) version; exit 0 ;;
+        x) set -x;;
+        \?) exit_msg "Invalid option: ${OPTARG} " ;;
+        :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument"
+    esac
+done
+
+shift $(( ${OPTIND} - 1 ))
+OPTIND=1
+
+# Determine sub-command
+#######################
+readonly VALID_SUBCOMMANDS="create undo run move list"
+
+for cmd in $VALID_SUBCOMMANDS; do
+    if [ "$cmd" = "${1:-}" ]; then
+        shift
+        $cmd "$@"
+        exit
+    fi
+done
+
+if [ -z "${1:-}" ]; then
+    echo "Expected sub-command. Use 'partrt -h' for help." >&2
+else
+    echo "Illegal sub-command: '$1'. Valid commands: ${VALID_SUBCOMMANDS}. Use 'partrt -h' for help." >&2
+fi
+
+exit 1
+
+# vim:noet:sw=4:ts=8
