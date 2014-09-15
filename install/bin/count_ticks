@@ -174,19 +174,13 @@ get_mask_from_range () {
 # Depends on the following global variables:
 # DEFAULT_CPUSET_ROOT
 get_cpuset_root () {
-    local CPUSET_ROOT
-
     grep -q -s cpuset /proc/filesystems || exit_msg "Kernel is lacking support for cpuset"
 
-    while read -a line; do
-        if [[ ${line[2]} == 'cgroup' ]]; then
-            CPUSET_ROOT="${line[1]}"
-        fi
-    done < /proc/mounts
+    if [[ ! -d ${DEFAULT_CPUSET_ROOT} ]]; then
+        exit_msg "cpuset has not been mountad."
+    fi
 
-    [[ -z ${CPUSET_ROOT:-} ]] && exit_msg "cpuset has not been mountad."
-
-    echo "$CPUSET_ROOT"
+    echo "$DEFAULT_CPUSET_ROOT"
 }
 
 # Check if there are a prefix on the cpuset file
