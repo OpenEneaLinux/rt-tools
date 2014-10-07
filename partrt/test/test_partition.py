@@ -93,6 +93,12 @@ def print_msg(msg):
 #                                Helper functions
 ################################################################################
 
+# Run shell command. Will tell the world about it if verbose is true
+def run(cmd, func=None):
+    print_msg("Executing: '" + cmd + "'")
+    return subprocess.Popen(cmd, shell=True, preexec_fn=func, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+
 # Convert Linux CPU list (i.e: 3,4,5-7) to bitmask. Return -1 on failure
 def liststr2mask(liststr):
     try:
@@ -139,8 +145,7 @@ def get_cpusets():
 # Check if bad parameter is detected
 def bad_parameter(cmd, tc_name):
     try:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True)
+        p = run(cmd)
         (stdout, stderr) = p.communicate()
         if p.returncode == 0:
             print_msg(tc_name + ": Failed: " + cmd +
@@ -175,6 +180,8 @@ def get_task_info(pid):
             last_cpu = int(elements[PROC_LAST_CPU_ELEM])
             policy = int(elements[PROC_SCHED_POLICY])
             prio = int(elements[PROC_RT_PRIO])
+
+            print_msg("get_task_info(" + str(pid) + "): Task name: " + task_name + ", PID: " + str(pid) + ", affinity: " + str(affinity) + ", last CPU: " + str(last_cpu) + ", policy: " + str(policy) + ", prio: " + str(prio))
 
         return task_name, affinity, last_cpu, policy, prio
 
@@ -424,8 +431,7 @@ def part_tc_1_1_prepare():
         else:
             cmd = ("partrt create " + hex(options.rt_mask))
 
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True)
+        p = run(cmd)
 
         (stdout, stderr) = p.communicate()
 
@@ -462,9 +468,7 @@ def part_tc_1_1_prepare():
 def part_tc_1_2_prepare():
     try:
         cmd = "partrt list"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
@@ -659,9 +663,7 @@ def part_tc_4_1_run():
         rt_mask = options.rt_mask
 
         cmd = "partrt run -f 60 rt watch ls"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
 
         time.sleep(1)
 
@@ -714,9 +716,7 @@ def part_tc_4_2_run():
        nrt_mask = ~rt_mask & (2 ** multiprocessing.cpu_count() - 1)
 
        cmd = "partrt run nrt watch ls"
-       p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+       p = run(cmd, func=os.setsid)
 
        time.sleep(1)
 
@@ -771,9 +771,7 @@ def part_tc_4_3_run():
         cpu = 2 ** bit
 
         cmd = "partrt run -c " + hex(cpu) + " -f 60 rt watch ls"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
 
         time.sleep(1)
 
@@ -892,9 +890,7 @@ def part_tc_7_bad_parameters():
         #################################
         # Create process that we can fiddle with
         cmd = "while true; do sleep .1; done"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
 
         cmd = "partrt move " + str(p.pid) + " asdf"
 
@@ -929,9 +925,7 @@ def part_tc_8_mov():
         nrt_mask = ~rt_mask & (2 ** multiprocessing.cpu_count() - 1)
 
         cmd = "while true; do sleep .1; done"
-        p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p1 = run(cmd, func=os.setsid)
 
         time.sleep(1)
 
@@ -963,9 +957,7 @@ def part_tc_8_mov():
 
         cmd = ("partrt move -c " + hex(cpu) + " " + str(p1.pid) + " rt")
 
-        p2 = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE, shell=True,
-                              preexec_fn=os.setsid)
+        p2 = run(cmd, func=os.setsid)
 
         p2.wait()
 
@@ -1025,9 +1017,7 @@ def part_tc_9_check_env():
 def part_tc_10_cleanup():
     try:
         cmd = "partrt undo"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
@@ -1065,9 +1055,7 @@ def nopart_tc_1_1_cleanup():
 
         # Create partitions
         cmd = ("partrt create " + hex(options.rt_mask))
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
@@ -1078,9 +1066,7 @@ def nopart_tc_1_1_cleanup():
 
         # Remove partitions
         cmd = "partrt undo -s /tmp/partrt_env"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
@@ -1119,9 +1105,7 @@ def nopart_tc_1_2_cleanup():
         cmd = ("partrt -r rt1 -n nrt1 create -a -b -c -d -m -r -t -w " +
                hex(options.rt_mask))
 
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
 
         (stdout, stderr) = p.communicate()
 
@@ -1140,9 +1124,7 @@ def nopart_tc_1_2_cleanup():
 
         # Remove partitions
         cmd = "partrt -r rt1 -n nrt1 undo"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
 
         (stdout, stderr) = p.communicate()
 
@@ -1175,9 +1157,7 @@ def nopart_tc_2_1_help_text():
     try:
 
         cmd = "partrt -h"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
 
         (stdout, stderr) = p.communicate()
 
@@ -1211,9 +1191,7 @@ def nopart_tc_2_1_help_text():
 def nopart_tc_2_2_help_text():
     try:
         cmd = "partrt run -h"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
@@ -1334,9 +1312,7 @@ def nopart_tc_4_copyright():
     try:
         found_copyright = False
         cmd = "partrt -V"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
@@ -1364,6 +1340,8 @@ def nopart_tc_4_copyright():
         return FAIL
 
 def run_tc(nopart_tc_func, nopart_tc_name, expected_result):
+    print_msg(nopart_tc_name + ": Executing")
+
     result = nopart_tc_func()
     if result != expected_result:
         test_result = 1
@@ -1376,9 +1354,7 @@ def run_tc(nopart_tc_func, nopart_tc_name, expected_result):
 def cleanup():
     try:
         cmd = "partrt undo"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                                 preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
@@ -1388,9 +1364,7 @@ def cleanup():
             sys.exit(1)
 
         cmd = "partrt -r rt1 -n nrt1 undo"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True,
-                             preexec_fn=os.setsid)
+        p = run(cmd, func=os.setsid)
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
