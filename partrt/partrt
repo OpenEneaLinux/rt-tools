@@ -1,4 +1,4 @@
-#!/bin/bash -eu
+#!/bin/sh -eu
 
 # Copyright (c) 2013,2014 by Enea Software AB
 # All rights reserved.
@@ -27,10 +27,12 @@
 
 version () {
     cat <<EOF
-partrt 1.1
+partrt 1.2
 
 Copyright (C) 2013,2014 by Enea Software AB.
-
+This is free software; see the source for copying conditions.  There is no
+warranty; not even for merchantability or fitness for a particular purpose,
+to the extent permitted by law.
 EOF
 }
 
@@ -188,21 +190,21 @@ Example:
 EOF
 }
 
-declare CPUSET_ROOT
+# local CPUSET_ROOT
 
-declare -r DEFAULT_CPUSET_ROOT=/sys/fs/cgroup/cpuset
-declare -r DEFAULT_CPUSET_PREFIX=cpuset.
-declare -r DEFAULT_RT_PARTITION=rt
-declare -r DEFAULT_NRT_PARTITION=nrt
-declare -r MASK_MSB=31
-declare -r PARTRT_SETTINGS_FILE="/tmp/partrt_env"
+readonly DEFAULT_CPUSET_ROOT=/sys/fs/cgroup/cpuset
+readonly DEFAULT_CPUSET_PREFIX=cpuset.
+readonly DEFAULT_RT_PARTITION=rt
+readonly DEFAULT_NRT_PARTITION=nrt
+readonly MASK_MSB=31
+readonly PARTRT_SETTINGS_FILE="/tmp/partrt_env"
 
 ################
 # partrt options
 ################
-declare rt_partition=$DEFAULT_RT_PARTITION
-declare nrt_partition=$DEFAULT_NRT_PARTITION
-declare verbose=false
+rt_partition=$DEFAULT_RT_PARTITION
+nrt_partition=$DEFAULT_NRT_PARTITION
+verbose=false
 
 ##################
 # Helper functions
@@ -215,11 +217,13 @@ exit_msg () {
     exit 1
 }
 
+bitcalc=$( which bitcalc ) || exit_msg "bitcalc: Application not found in any search path, please install it"
+
 # Print depending on verbosity level
 # $1 Message
 verbose_printf () {
     [ "$verbose" = true ] || return 0
-    declare -r fmt="$1"
+    local fmt="$1"
     shift
     printf -- "${fmt}\n" $@ >&2
 }
@@ -236,7 +240,10 @@ verbose_printf () {
 # the argument
 get_arg()
 {
-    if [ -z $2 ] || [[ $2 == -* ]]; then
+    case "$2" in
+	-*) exit_msg "Option $1 requires an argument"
+    esac
+    if [ -z $2 ]; then
         exit_msg "Option $1 requires an argument"
     fi
     printf "%s" "$2"
@@ -247,10 +254,10 @@ get_arg()
 # $1 File
 # $2 Value
 write_to_file () {
-    declare file=$1
-    declare val=$2
+    local file=$1
+    local val=$2
 
-    if [ -a $file ]; then
+    if [ -e $file ]; then
         echo $val > $file || exit_msg "Failed to write $val into $file"
         verbose_printf "echo $val > $file"
     else
@@ -262,18 +269,18 @@ write_to_file () {
 # $1 - File
 # $2 - Value
 log_prev_and_apply () {
-    declare file=$1
-    declare val=$2
-    declare old_val=""
+    local file=$1
+    local val=$2
+    local old_val=""
 
-    if [ -a $file ]; then
+    if [ -e $file ]; then
         old_val=$(cat "$file")
         echo $val > $file
         if [ $? -ne 0 ]; then
             verbose_printf "Failed to write $1 into $2"
         else
-            echo "$file=$old_val" >> $PARTRT_SETTINGS_FILE
-            verbose_printf "$file=$old_val > $PARTRT_SETTINGS_FILE"
+            echo "$file $old_val" >> $PARTRT_SETTINGS_FILE
+            verbose_printf "$file $old_val > $PARTRT_SETTINGS_FILE"
         fi
     else
         verbose_printf "$file: Does not exist"
@@ -283,9 +290,9 @@ log_prev_and_apply () {
 # Try hard to create a directory by mounting a tmpfs in the parent directory
 # (given that the parent directory is empty).
 create_dir_stubborn () {
-    declare DIR=$1
-    declare DIR_NO_SLASH=$DIR
-    declare PARENT
+    local DIR=$1
+    local DIR_NO_SLASH=$DIR
+    local PARENT
 
     # Try to just create the directory
     if mkdir $DIR &> /dev/null; then
@@ -324,7 +331,7 @@ create_dir_stubborn () {
 get_cpuset_root () {
     grep -q -s cpuset /proc/filesystems || exit_msg "Kernel is lacking support for cpuset"
 
-    if [[ -d ${DEFAULT_CPUSET_ROOT} ]]; then
+    if [ -d "${DEFAULT_CPUSET_ROOT}" ]; then
         verbose_printf "$DEFAULT_CPUSET_ROOT: Using existing mount"
     else
         verbose_printf "$DEFAULT_CPUSET_ROOT: Mounting CPUSET"
@@ -375,13 +382,13 @@ move_task () {
 # $1 - IRQ vector number
 # $2 - Mask to use for smp_affinity
 set_irq_affinity () {
-    declare -ri vector="$1"
-    declare -ri mask="$2"
+    local vector="$1"
+    local mask="$2"
 
-    if printf "%x" $mask > /proc/irq/$vector/smp_affinity 2>/dev/null; then
-        verbose_printf "Vector $vector: Setting affinity mask 0x%x" $mask
+    if printf "%s" $mask > /proc/irq/$vector/smp_affinity 2>/dev/null; then
+        verbose_printf "Vector $vector: Setting affinity mask 0x%s" $mask
     else
-        verbose_printf "Vector $vector: Failed setting affinity mask 0x%x" $mask
+        verbose_printf "Vector $vector: Failed setting affinity mask 0x%s" $mask
     fi
 }
 
@@ -390,120 +397,17 @@ set_irq_affinity () {
 irq_new_mask () {
     mask=$1
 
-    verbose_printf "Setting IRQ affinity to mask 0x%x" $mask
+    verbose_printf "Setting IRQ affinity to mask 0x%s" $mask
 
     # Set affinity to interrupts registered in the future
-    printf "%x" $mask > /proc/irq/default_smp_affinity
+    printf "%s" $mask > /proc/irq/default_smp_affinity
 
     for dir in /proc/irq/*; do
-        [[ -d $dir ]] && set_irq_affinity "$(basename $dir)" $mask
+        [ -d "$dir" ] && set_irq_affinity "$(basename $dir)" $mask
     done
 
     # Make sure to return success, even if some move failed
     return 0
-}
-
-# Convert CPU mask to comma seperated list
-# $1 = cpumask
-mask_to_list () {
-    declare new_list=""
-    declare str_elem=""
-    declare -i mask=$1
-    declare first_elem=true
-
-    for ((bit=0; bit<=$MASK_MSB; bit++)); do
-        if (( $mask & ( 1 << $bit ) )); then
-            if [ $first_elem = true ]; then
-                first_elem=false
-                str_elem="$bit"
-            else
-                str_elem=",$bit"
-            fi
-            new_list=$new_list$str_elem
-        fi
-    done
-
-    printf $new_list
-}
-
-########################################
-# Functions for converting lists to mask
-########################################
-
-# This function translates "-" as separator into bash standard whitespaces.
-# It adds sanity checks to the process, as well as supporting a single value
-# which is translated into <value> <value>.
-# NOTE: Current implementation only support a single range or value!
-#       If several ranges are needed, use get_range()!
-# $1 = range, either single value or <min>-<max>
-# $2 = prefix for error prints
-get_single_range () {
-    # Split range into an array, using "-" as separator
-    IFS='-' read -a range <<<"$1"
-
-    # Sanity check the array.
-    # Check that array is one or two elements in size
-    declare -ri nr_elements=${#range[@]}
-    (( nr_elements == 1 || nr_elements == 2 )) || exit_msg "$2: $1: Illegal range"
-
-    # Check that all array entries are integers
-    for entry in "${range[@]}"; do
-        [ ! -z "${entry##*[!0-9]*}" ] || exit_msg "$2: $entry: Not an integer"
-    done
-
-    (( nr_elements == 1 )) && range[1]=${range[0]}
-
-    # If only a single value was given, create a range with this value as both min and max
-    echo -n "${range[@]} "
-}
-
-# This function translates "-" as separator into bash standard whitespaces.
-# It adds sanity checks to the process, as well as supporting a single value
-# which is translated into <value> <value>.
-# NOTE: Current implementation only support a single range or value!
-# $1 = comma separated list of ranges, either single value or <min>-<max>
-# $2 = prefix for error prints
-get_range () {
-    declare -a range_list
-    local range
-
-    IFS=, read -a range_list <<<"$1"
-
-    for range in ${range_list[@]}; do
-        get_single_range "$range" "$2"
-    done
-}
-
-# Parameters:
-# $@ = comma separated list of ranges, either single value or <min>-<max>
-#
-# Returns on stdio:
-# Mask with bits set according to range
-range_to_mask () {
-    declare -a range=( $(get_range "$@" "Could not calculate CPU mask") )
-    declare -i mask=0
-
-    while true; do
-        [[ -z ${1:-} ]] && break
-        declare -i min="$1"
-        declare -i max="$2"
-        shift 2
-
-        (( mask |= (((1 << (max-min+1)) - 1) << min) )) #min
-    done
-
-    printf ${mask}
-}
-
-# This function translates "-" as separator into a bitmask.
-# $@ = comma separated list of ranges, either single value or <min>-<max>
-#
-# Returns on stdio:
-# Mask with bits set according to the range string
-get_mask_from_range () {
-    declare -a range=( $(get_range "$@" "Could not calculate CPU mask") )
-    declare -i mask=$(range_to_mask ${range[@]})
-    printf ${mask}
 }
 
 #######################
@@ -515,24 +419,22 @@ get_mask_from_range () {
 create () {
     CPUSET_ROOT=$(get_cpuset_root)
     CPUSET_PREFIX=$(get_cpuset_prefix $CPUSET_ROOT)
-    declare isolated_cpu_list=""
-    declare nonisolated_cpu_list=""
-    declare re='^[0-9]+$'
-    declare datestr=$(date +"%Y-%m-%d--%r")
-    declare -i rt_mask=0
-    declare -i nrt_mask=0
-    declare -i nr_of_cpus=$(grep -c ^processor /proc/cpuinfo)
-    declare -i available_cpu_mask=$((2 ** $nr_of_cpus - 1))
-    declare migrate_bwq=true
-    declare disable_machine_check=true
-    declare defer_ticks=true
-    declare delay_vmtimers=true
-    declare disable_numa_affinity=true
-    declare numa_partition=false
-    declare restart_hotplug=true
-    declare disable_throttle=true
-    declare disable_watchdog=true
-    declare numa_node=0
+    local isolated_cpu_list=""
+    local nonisolated_cpu_list=""
+    local datestr=$( date +"%Y-%m-%d--%r" )
+    local rt_mask=0
+    local nrt_mask=0
+    local available_cpu_mask=$( ${bitcalc} '&'$( nproc --all ))
+    local migrate_bwq=true
+    local disable_machine_check=true
+    local defer_ticks=true
+    local delay_vmtimers=true
+    local disable_numa_affinity=true
+    local numa_partition=false
+    local restart_hotplug=true
+    local disable_throttle=true
+    local disable_watchdog=true
+    local numa_node=0
 
     while getopts ":abcdhmn:rtw" o; do
         case "${o}" in
@@ -554,34 +456,33 @@ create () {
     shift $(( ${OPTIND} - 1 ))
     if [ "$numa_partition" = false ]; then
         [ -z ${1:-} ] && exit_msg "Missing mandatory cpumask"
-        if [[ $1 == "0x"* || $1 == "0X"* ]] ; then
-            rt_mask=$1;
-        else
-            rt_mask=$(( 16#$1 ))
-        fi
+        rt_mask=$(${bitcalc} $1) || exit_msg "Illegal CPU mask: $rt_mask"
     else
         if [ -d /sys/devices/system/node/node$numa_node ]; then
-            rt_mask=$(( 16#$(cat /sys/devices/system/node/node$numa_node/cpumap) ))
+            rt_mask=$(${bitcalc} '%'$(cat /sys/devices/system/node/node$numa_node/cpumap))
         else
             exit_msg "NUMA node: $numa_node does not exist"
         fi
     fi
 
-    [[ ! $rt_mask =~ $re || $rt_mask -le 0 || $rt_mask -gt $available_cpu_mask ]] && exit_msg "Illegal CPU mask: $rt_mask"
+    [ $( ${bitcalc} $rt_mask $available_cpu_mask and print-bit-count ) -eq 0 ] && exit_msg "Illegal CPU mask: $rt_mask"
 
-    isolated_cpu_list=$(mask_to_list $rt_mask)
-    nrt_mask=$(( ~$rt_mask & $available_cpu_mask ))
-    nonisolated_cpu_list=$(mask_to_list $nrt_mask)
+    isolated_cpu_list=$(${bitcalc} --format=list $rt_mask)
+    nrt_mask=$(${bitcalc} $rt_mask $available_cpu_mask xor)
+    nonisolated_cpu_list=$(${bitcalc} --format=list $nrt_mask)
 
     # Check if there are present partitions
     #######################################
-    [ -n "$(find $CPUSET_ROOT/* -type d)" ] && exit_msg "There are allready cpusests/partitions on the system."
+    if [ -n "$(find $CPUSET_ROOT/* -type d)" ]; then
+        [ -e $CPUSET_ROOT/$rt_partition ] && exit_msg "$CPUSET_ROOT/$rt_partition: Partition already exists, remove it first using 'undo' command."
+        [ -e $CPUSET_ROOT/$nrt_partition ] && exit_msg "$CPUSET_ROOT/$nrt_partition: Partition already exists, remove it first using 'undo' command."
+        echo "WARNING: Other partitions exists that might interfere with partitions created by this tool.
+         This might be because you use systemd, which also defines CPU partitions." >&2
+    fi
 
     # Create RT partition
     #####################
-    if [[ ! -d $CPUSET_ROOT/$rt_partition ]]; then
-        mkdir $CPUSET_ROOT/$rt_partition
-    fi
+    mkdir $CPUSET_ROOT/$rt_partition
 
     # Allocate CPUs
     write_to_file $CPUSET_ROOT/$rt_partition/${CPUSET_PREFIX}cpus $isolated_cpu_list
@@ -601,15 +502,13 @@ create () {
 
     # Create NRT partition
     #######################
-    if [[ ! -d $CPUSET_ROOT/$nrt_partition ]]; then
-        mkdir $CPUSET_ROOT/$nrt_partition
-    fi
+    mkdir $CPUSET_ROOT/$nrt_partition
 
     # NUMA partitioning
     ###################
     if [ "$numa_partition" = true ]; then
-        nrt_nodes=$(( $(get_mask_from_range $(cat /sys/devices/system/node/possible)) & ~$(get_mask_from_range $numa_node) ))
-        write_to_file $CPUSET_ROOT/$nrt_partition/${CPUSET_PREFIX}mems $(mask_to_list $nrt_nodes)
+        nrt_nodes=$(${bitcalc} '#'$(cat /sys/devices/system/node/possible) '#'$numa_node)
+        write_to_file $CPUSET_ROOT/$nrt_partition/${CPUSET_PREFIX}mems $(${bitcalc} --format=list $nrt_nodes)
     else
         # No particular requirements on memory handling
         write_to_file $CPUSET_ROOT/$nrt_partition/${CPUSET_PREFIX}mems 0
@@ -676,7 +575,7 @@ create () {
     # Move block device writeback workqueues
     ########################################
     if [ "$migrate_bwq" = true ]; then
-        log_prev_and_apply /sys/bus/workqueue/devices/writeback/cpumask $(printf "%x" $nrt_mask)
+        log_prev_and_apply /sys/bus/workqueue/devices/writeback/cpumask $(printf "%s" $nrt_mask)
     fi
 
     # Disable machine check (Writing 0 to machinecheck0/check_interval will
@@ -724,28 +623,24 @@ create () {
 
 # $1 - path to settings file
 restore_from_file () {
-    declare first_line=true
-    # Check if file exists
-    [ -a $1 ] || exit_msg "Provided configuration file: $1 does not exist"
+    local name
+    local val
+    local first_line=true
 
-    while read -a line || [[ ${#line[@]} > 0 ]]; do
+    # Check if file exists
+    [ -e $1 ] || exit_msg "Provided configuration file: $1 does not exist"
+
+    while read name val || [ -n "${val}" ]; do
         # Check if this is a partrt settings file
-        if [ $first_line  = true ]; then
-            IFS=' '
-            if [ "${line[0]}" !=  "partrt_settings:" ]; then
+        if [ $first_line = true ]; then
+            if [ "${name}" !=  "partrt_settings:" ]; then
                 exit_msg "Corrupt settings file: $1"
             fi
             first_line=false
             continue
         fi
 
-        IFS='='
-        entry=( ${line[0]} )
-        name=${entry[0]}
-        val=${entry[1]}
-        IFS=' '
-
-        if [ -a "$name" ]; then
+        if [ -e "$name" ]; then
             verbose_printf "echo $val > $name"
             echo $val > $name
         else
@@ -767,9 +662,8 @@ restore_from_file () {
 undo () {
     CPUSET_ROOT=$(get_cpuset_root)
     CPUSET_PREFIX=$(get_cpuset_prefix $CPUSET_ROOT)
-    declare nr_of_cpus=$(grep -c ^processor /proc/cpuinfo)
-    declare -i mask=$((2 ** $nr_of_cpus - 1))
-    declare settings_file=""
+    local mask=$( ${bitcalc} '&'$( nproc --all ))
+    local settings_file=""
 
     while getopts ":hs:" o; do
         case "${o}" in
@@ -780,14 +674,14 @@ undo () {
         esac
     done
 
-    if [[ -d $CPUSET_ROOT/$rt_partition ]]; then
+    if [ -d "$CPUSET_ROOT/$rt_partition" ]; then
         # Move from RT to root
         while read task; do
             move_task $task
         done < $CPUSET_ROOT/$rt_partition/tasks
     fi
 
-    if [[ -d $CPUSET_ROOT/$nrt_partition ]]; then
+    if [ -d "$CPUSET_ROOT/$nrt_partition" ]; then
         # Move from NRT to root
         while read task; do
             move_task $task
@@ -798,12 +692,12 @@ undo () {
     echo 1 > $CPUSET_ROOT/${CPUSET_PREFIX}sched_load_balance || exit_msg "Could not set root partition load balancing"
 
     # Remove created directories
-    if [[ -d $CPUSET_ROOT/$rt_partition ]]; then
+    if [ -d "$CPUSET_ROOT/$rt_partition" ]; then
         verbose_printf "Removing rt partition"
         rmdir $CPUSET_ROOT/$rt_partition
     fi
 
-    if [[ -d $CPUSET_ROOT/$nrt_partition ]]; then
+    if [ -d "$CPUSET_ROOT/$nrt_partition" ]; then
         verbose_printf "Removing nrt partition"
         rmdir $CPUSET_ROOT/$nrt_partition
     fi
@@ -823,7 +717,7 @@ undo () {
         write_to_file /sys/bus/workqueue/devices/writeback/numa 1
         write_to_file /proc/sys/kernel/watchdog 1
         write_to_file /sys/devices/system/machinecheck/machinecheck0/check_interval 300
-        write_to_file /sys/bus/workqueue/devices/writeback/cpumask $(echo $(printf "%x" $mask))
+        write_to_file /sys/bus/workqueue/devices/writeback/cpumask $(echo $(printf "%s" $mask))
     fi
 
     echo "System was successfully restored"
@@ -835,12 +729,11 @@ undo () {
 run () {
     CPUSET_ROOT=$(get_cpuset_root)
     CPUSET_PREFIX=$(get_cpuset_prefix $CPUSET_ROOT)
-    declare sched_policy=""
-    declare -i prio=0
-    declare re='^[0-9]+$'
-    declare partition=""
-    declare cpumask=""
-    declare rt_mask=""
+    local sched_policy=""
+    local prio=0
+    local partition=""
+    local cpumask=0
+    local rt_mask=""
 
     while getopts ":c:f:hor:" o; do
         case "${o}" in
@@ -858,34 +751,27 @@ run () {
     [ -z ${1:-} ] && exit_msg "Missing mandatory partition name"
     partition=$1; shift;
 
-    [[ -d $CPUSET_ROOT/$partition ]] || exit_msg "Could not find cpuset partition: $partition"
+    [ -d "$CPUSET_ROOT/$partition" ] || exit_msg "Could not find cpuset partition: $partition"
 
     [ -z ${1:-} ] && exit_msg "No command to execute"
 
     write_to_file $CPUSET_ROOT/$partition/tasks $$
 
-    if [[ $cpumask == "0x"* || $cpumask == "0X"* ]] ; then
-        cpumask=$(( $cpumask ))
-    else
-        cpumask=$(( 16#$cpumask ))
-    fi
+    cpumask=$(${bitcalc} $cpumask)
 
-    rt_mask=( $(grep Cpus_allowed "/proc/$$/status") )
-    rt_mask=$(( 16#${rt_mask[1]} ))
+    rt_mask=$(fgrep -w Cpus_allowed "/proc/$$/status" | cut -f 2)
 
     if [ $cpumask -ne 0 ]; then
-        if [[ $(( $cpumask & $rt_mask )) -eq $cpumask ]]; then
-            taskset -p $(printf "0x%x" "$cpumask") "$$" 2>&1 > /dev/null
+        if [ $(${bitcalc} $cpumask $rt_mask and) -eq $cpumask ]; then
+            taskset -p $(printf "0x%s" "$cpumask") "$$" 2>&1 > /dev/null
         else
             exit_msg "Invalid cpumask: $cpumask contains one or more CPUs that are not part of $partition"
         fi
     fi
 
-    if [[ -z $sched_policy ]]; then
+    if [ -z "$sched_policy" ]; then
         exec "$@"
     else
-        [[ "f r" == *$sched_policy* ]] && [[ ! $prio =~ $re || $prio -le 0 || $prio -gt 99 ]] && exit_msg "Illegal priority: $prio"
-
         exec chrt "-$sched_policy" $prio "$@"
     fi
 }
@@ -897,8 +783,8 @@ run () {
 
 move () {
     CPUSET_ROOT=$(get_cpuset_root)
-    declare cpumask=""
-    declare rt_mask=""
+    local cpumask=0
+    local rt_mask=""
 
     while getopts ":c:h" o; do
         case "${o}" in
@@ -912,27 +798,22 @@ move () {
     shift $(( ${OPTIND} - 1 ))
 
     [ -z ${1:-} ] && exit_msg "Missing mandatory task ID"
-    declare pid=$1; shift;
+    readonly pid=$1; shift;
     [ -d /proc/$pid ] || exit_msg "Task ID $pid does not exist"
 
     [ -z ${1:-} ] && exit_msg "Missing mandatory partition name"
-    declare partition=$1; shift;
-    [ -a $CPUSET_ROOT/$partition ] || exit_msg "Partition $partition does not exist"
+    readonly partition=$1; shift;
+    [ -e $CPUSET_ROOT/$partition ] || exit_msg "Partition $partition does not exist"
 
     move_task $pid $partition
 
-    if [[ $cpumask == "0x"* || $cpumask == "0X"* ]] ; then
-        cpumask=$(( $cpumask ))
-    else
-        cpumask=$(( 16#$cpumask ))
-    fi
+    cpumask=$( ${bitcalc} $cpumask )
 
-    rt_mask=( $(grep Cpus_allowed "/proc/$pid/status") )
-    rt_mask=$(( 16#${rt_mask[1]} ))
+    rt_mask=$(fgrep -w Cpus_allowed "/proc/$pid/status" | cut -f 2)
 
     if [ $cpumask -ne 0 ]; then
-        if [[ $(( $cpumask & $rt_mask )) -eq $cpumask ]]; then
-            taskset -p $(printf "0x%x" "$cpumask") "$pid" 2>&1 > /dev/null
+        if [ $( ${bitcalc} $cpumask $rt_mask and ) -eq $cpumask ]; then
+            taskset -p $(printf "0x%s" "$cpumask") "$pid" 2>&1 > /dev/null
         else
             exit_msg "Invalid cpumask: $cpumask contains one or more CPUs that are not part of $partition"
         fi
@@ -957,7 +838,7 @@ list () {
 
     found_partitions=false
     for dir in $(ls $CPUSET_ROOT); do
-        if [[ -a $CPUSET_ROOT/$dir/${CPUSET_PREFIX}cpus ]]; then
+        if [ -e "$CPUSET_ROOT/$dir/${CPUSET_PREFIX}cpus" ]; then
             found_partitions=true
             cpus=$(cat $CPUSET_ROOT/$dir/${CPUSET_PREFIX}cpus)
             echo "Name:$dir CPUs: $cpus"
@@ -993,17 +874,17 @@ OPTIND=1
 
 # Determine sub-command
 #######################
-declare -a VALID_SUBCOMMANDS="create undo run move list"
+readonly VALID_SUBCOMMANDS="create undo run move list"
 
 for cmd in $VALID_SUBCOMMANDS; do
-    if [[ $cmd == ${1:-} ]]; then
+    if [ "$cmd" = "${1:-}" ]; then
         shift
         $cmd "$@"
         exit
     fi
 done
 
-if [[ -z ${1:-} ]]; then
+if [ -z "${1:-}" ]; then
     echo "Expected sub-command. Use 'partrt -h' for help." >&2
 else
     echo "Illegal sub-command: '$1'. Valid commands: ${VALID_SUBCOMMANDS}. Use 'partrt -h' for help." >&2

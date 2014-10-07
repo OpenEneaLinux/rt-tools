@@ -17,12 +17,7 @@ partrt        Partition the CPUs into two sets: One set for real-time
 count_ticks   Counts number of ticks that occurs when executing one or several
               shell commands. Uses ftrace for this.
 
-list2mask     Helper script intended for providing a way to give a list of CPUs
-              for partrt rather than a CPU mask. Can also use nohz_full list
-              given as a kernel boot parameter.
-
-bitcalc       Bit calculator. This C application will soon replace list2mask
-              script above.
+bitcalc       Bit calculator, helper application for partrt script.
 
 Installing
 ----------
