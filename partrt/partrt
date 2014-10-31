@@ -295,7 +295,7 @@ create_dir_stubborn () {
     local PARENT
 
     # Try to just create the directory
-    if mkdir $DIR &> /dev/null; then
+    if mkdir $DIR 2> /dev/null; then
         return 0
     fi
 
