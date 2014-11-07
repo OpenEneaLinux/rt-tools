@@ -615,6 +615,13 @@ create () {
         fi
     fi
 
+    # Set frequency governor on rt CPUs to performance, or else there will be
+    # a supervisor timer running on that CPU prohibiting no hz full mode.
+    ##########################################################################
+    for rt_cpu in $isolated_cpu_list; do
+        write_to_file /sys/devices/system/cpu/cpu$rt_cpu/cpufreq/scaling_governor performance
+    done
+
     echo "System was successfylly divided into following partitions:"
     echo "Isolated CPUs ($rt_partition):$isolated_cpu_list"
     echo "Non-isolated CPUS ($nrt_partition):$nonisolated_cpu_list"
