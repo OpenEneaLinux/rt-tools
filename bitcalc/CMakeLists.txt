@@ -59,8 +59,97 @@ endmacro (check_optional_module)
 
 check_optional_module(LTTNG_UST lttng-ust)
 
-# Common flags
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror -Wshadow -Wuninitialized -Winit-self -Wmissing-prototypes -Wformat-security -Wunused-parameter -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=noreturn -Wundef -Wpointer-arith -Wbad-function-cast -Wcast-qual -Wcast-align -Wwrite-strings -Wconversion -Wjump-misses-init -Wlogical-op -Wno-aggressive-loop-optimization -Wstrict-prototypes -Wmissing-declarations -Wredundant-decls -fstack-protector -Dbitcalc_VERSION_MAJOR=${bitcalc_VERSION_MAJOR} -Dbitcalc_VERSION_MINOR=${bitcalc_VERSION_MINOR}")
+# Add version number as macros when compiling
+add_definitions(-Dbitcalc_VERSION_MAJOR=${bitcalc_VERSION_MAJOR} -Dbitcalc_VERSION_MINOR=${bitcalc_VERSION_MINOR})
+
+#####################
+# Add a few warnings
+#
+
+
+# The safe warnings
+add_definitions(-Wall)
+
+# The pretty safe warnings
+add_definitions(-Wextra)
+
+# Make sure warnings aren't accepted
+add_definitions(-Werror)
+
+# No variable name shadowing
+add_definitions(-Wshadow)
+
+# Catch the most common "use before initialized"
+add_definitions(-Wuninitialized)
+
+# Initializing with value dependent on itself
+add_definitions(-Winit-self)
+
+# Public functions need prototypes
+add_definitions(-Wmissing-prototypes)
+
+# Check for unsafe printf/scanf usage
+add_definitions(-Wformat-security)
+
+# Parameters not used, use "(void) param" if this is intentional
+add_definitions(-Wunused-parameter)
+
+# Check for missing __attribute__
+add_definitions(-Wsuggest-attribute=pure)
+add_definitions(-Wsuggest-attribute=const)
+add_definitions(-Wsuggest-attribute=noreturn)
+
+# Warn for undefined identifier in #if
+add_definitions(-Wundef)
+
+# Warn for anything depending on sizeof (void) or function
+add_definitions(-Wpointer-arith)
+
+# Warn for casts to non-matching type
+add_definitions(-Wbad-function-cast)
+
+# Warn when pointer is cast to remove type qualifier from target type
+add_definitions(-Wcast-qual)
+
+# Warn when a pointer cast increases alignment requirement
+add_definitions(-Wcast-align)
+
+# Make sure string constants have the const type
+add_definitions(-Wwrite-strings)
+
+# Warn for implicit conversion that can change the value
+add_definitions(-Wconversion)
+
+# Warn for a "goto" or similar the misses an initialization of something that
+# is being used
+add_definitions(-Wjump-misses-init)
+
+# Warn about suspicious use of logical operators in expressions
+add_definitions(-Wlogical-op)
+
+# Warn if in a loop with constant number of iterations the compiler detects
+# undefined behavior in some statement during one or more of the iterations
+add_definitions(-Wno-aggressive-loop-optimizations)
+
+# Warn if a function is declared or defined without specifying the argument
+# types
+add_definitions(-Wstrict-prototypes)
+
+# Warn if a global function is defined without a previous declaration
+add_definitions(-Wmissing-declarations)
+
+# Warn if anything is declared more than once in the same scope, even in cases
+# where multiple declaration is valid and changes nothing
+add_definitions(-Wredundant-decls)
+
+# Protect against stack smashing, this is default for some GCC builds but make
+# sure we have it
+add_definitions(-fstack-protector)
+
+
+#####################
+# Add sub-directories
+
 
 # Application source directory
 add_subdirectory (src)
