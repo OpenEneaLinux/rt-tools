@@ -371,7 +371,11 @@ move_task () {
     if echo $1 > $CPUSET_ROOT/${2:-}/tasks 2>/dev/null; then
         [ "$verbose" = true ] && verbose_printf "$1 ($(pid_to_name $1)): Moved to ${2:-root}"
     else
-        [ "$verbose" = true ] && verbose_printf "$1 ($(pid_to_name $1)): Could not be moved to ${2:-root}"
+        if taskset -p $(${bitcalc} $($DEFAULT_CPUSET_ROOT/$2/cpuset.cpus)) $1; then
+            [ "$verbose" = true ] && verbose_printf "$1 ($(pid_to_name $1)): Could not move to ${2:-root}, but affinity set to $(cat $DEFAULT_CPUSET_ROOT/$2/cpuset.cpus)"
+        else
+            [ "$verbose" = true ] && verbose_printf "$1 ($(pid_to_name $1)): Could not be moved to ${2:-root}, nor could affinity be set to $(cat $DEFAULT_CPUSET_ROOT/$2/cpuset.cpus)"
+        fi
     fi
 
     # Make sure to return success, even if some move failed
