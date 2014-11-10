@@ -43,7 +43,8 @@
 enum bitmap_format_t {
 	format_mask,
 	format_list,
-	format_u32list
+	format_u32list,
+	format_array
 };
 
 static enum bitmap_format_t display_format = format_mask;
@@ -65,6 +66,9 @@ static char *bitmap_str(const struct bitmap_t *set)
 		break;
 	case format_u32list:
 		str = bitmap_u32list(set);
+		break;
+	case format_array:
+		str = bitmap_array(set);
 		break;
 	}
 
@@ -463,6 +467,8 @@ int main(int argc, char *argv[])
 				display_format = format_list;
 			else if (strcmp(optarg, "u32list") == 0)
 				display_format = format_u32list;
+			else if (strcmp(optarg, "array") == 0)
+				display_format = format_array;
 			else
 				fail("%s: %s is an unknown format",
 				     argv[optind], optarg);

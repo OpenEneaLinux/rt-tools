@@ -225,6 +225,28 @@ START_TEST(test_bitmap_list_2)
 }
 END_TEST
 
+START_TEST(test_bitmap_array)
+{
+	const char bit_list[] = "3,5-7,1024";
+	char *returned_array;
+	const char expected_array[] = "3 5 6 7 1024";
+	struct bitmap_t *set;
+
+	info("%s: Test case entry", __func__);
+
+	set = bitmap_alloc_from_list(bit_list);
+	returned_array = bitmap_array(set);
+
+	ck_assert_msg(strcmp(returned_array, expected_array) == 0,
+		"got '%s', expected '%s'", returned_array, expected_array);
+
+	bitmap_free(set);
+	free(returned_array);
+
+	info("%s: Test case exit", __func__);
+}
+END_TEST
+
 START_TEST(test_bitmap_bit_count)
 {
 	struct bitmap_t * const set = bitmap_alloc_zero();
@@ -370,6 +392,7 @@ static Suite *suite_bitmap(void)
 	tcase_add_test(tc_core, test_bitmap_bit_count);
 	tcase_add_test(tc_core, test_bitmap_u32list);
 	tcase_add_test(tc_core, test_bitmap_u32list_2);
+	tcase_add_test(tc_core, test_bitmap_array);
 	tcase_add_test(tc_core, test_bitmap_nr_bits);
 	suite_add_tcase(s, tc_core);
 

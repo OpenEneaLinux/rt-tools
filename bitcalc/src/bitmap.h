@@ -19,6 +19,10 @@ extern char *bitmap_hex(const struct bitmap_t *set);
  * list of bit ranges. */
 extern char *bitmap_list(const struct bitmap_t *set);
 
+/* Return a malloc'ed string with the bitmap presented as a space separated
+ * list of bit indexes. */
+extern char *bitmap_array(const struct bitmap_t *set);
+
 /* Return a malloc'ed string with comma separated unsigned 32 bit bit masks
  * presented with hexadecimal characters. */
 extern char *bitmap_u32list(const struct bitmap_t *set);

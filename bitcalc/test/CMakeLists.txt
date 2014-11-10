@@ -85,6 +85,7 @@ do_test_regex (bitcalc_format_list_long "./test_bitcalc --format=list 0xfe" "1-7
 do_test_regex (bitcalc_format_list_short "./test_bitcalc -Flist 0xfe" "1-7")
 do_test_regex (bitcalc_format_u32list_long "./test_bitcalc --format=u32list 0xffffffff88888888" "ffffffff,88888888")
 do_test_regex (bitcalc_format_u32list_short "./test_bitcalc -vvv -Fu32list 0xffffffff88888888" "ffffffff,88888888")
+do_test_regex (bitcalc_format_array "./test_bitcalc --format=array '#1-3,5,1024'" "1 2 3 5 1024")
 
 # Negative tests
 

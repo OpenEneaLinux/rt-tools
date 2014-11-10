@@ -253,6 +253,57 @@ char *bitmap_list(const struct bitmap_t *set)
 	return str;
 }
 
+static size_t bitmap_array_write(size_t curr_idx, size_t size_alloced,
+			     size_t bit, char *str)
+{
+	int status;
+
+	status = snprintf(str + curr_idx, size_alloced - curr_idx, "%s%zu",
+			(curr_idx > 0) ? " " : "", bit);
+
+	if (status < 0)
+		fail("%s: Internal error: snprintf() returned error", __func__);
+
+	return (size_t) status;
+}
+
+char *bitmap_array(const struct bitmap_t *set)
+{
+	size_t curr_idx = 0;
+	size_t size_alloced = 0;
+	char *str = NULL;
+	size_t bit;
+
+	for (bit = 0; bit <= set->size_bits; bit++) {
+		size_t bytes_needed;
+
+		if (!bitmap_isset(bit, set))
+			continue;
+
+		bytes_needed = bitmap_array_write(
+			curr_idx, size_alloced, bit, str);
+
+		if (bytes_needed >= (size_alloced - curr_idx)) {
+			str =
+			    checked_realloc(str,
+					    size_alloced + bytes_needed + 1);
+			size_alloced += bytes_needed + 1;
+			bytes_needed = bitmap_array_write(
+				curr_idx, size_alloced, bit, str);
+
+			assert(bytes_needed < (size_alloced - curr_idx));
+		}
+
+		curr_idx += bytes_needed;
+	}
+
+	if (str == NULL) {
+		str = checked_malloc(1);
+		str[0] = '\0';
+	}
+	return str;
+}
+
 char *bitmap_u32list(const struct bitmap_t *set)
 {
 	size_t bit;
