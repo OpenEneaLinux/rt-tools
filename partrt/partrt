@@ -421,6 +421,8 @@ create () {
     CPUSET_PREFIX=$(get_cpuset_prefix $CPUSET_ROOT)
     local isolated_cpu_list=""
     local nonisolated_cpu_list=""
+    local isolated_cpu_array=""
+    local nonisolated_cpu_array=""
     local datestr=$( date +"%Y-%m-%d--%r" )
     local rt_mask=0
     local nrt_mask=0
@@ -470,6 +472,8 @@ create () {
     isolated_cpu_list=$(${bitcalc} --format=list $rt_mask)
     nrt_mask=$(${bitcalc} $rt_mask $available_cpu_mask xor)
     nonisolated_cpu_list=$(${bitcalc} --format=list $nrt_mask)
+    isolated_cpu_array=$(${bitcalc} --format=array $rt_mask)
+    nonisolated_cpu_array=$(${bitcalc} --format=array $nrt_mask)
 
     # Check if there are present partitions
     #######################################
@@ -589,10 +593,10 @@ create () {
     ####################################################
     if [ "$restart_hotplug" = true ]; then
         # All CPUs should be turned off before any is started again
-        for rt_cpu in $isolated_cpu_list; do
+        for rt_cpu in $isolated_cpu_array; do
             write_to_file /sys/devices/system/cpu/cpu$rt_cpu/online 0
         done
-        for rt_cpu in $isolated_cpu_list; do
+        for rt_cpu in $isolated_cpu_array; do
             write_to_file /sys/devices/system/cpu/cpu$rt_cpu/online 1
         done
 
@@ -618,7 +622,7 @@ create () {
     # Set frequency governor on rt CPUs to performance, or else there will be
     # a supervisor timer running on that CPU prohibiting no hz full mode.
     ##########################################################################
-    for rt_cpu in $isolated_cpu_list; do
+    for rt_cpu in $isolated_cpu_array; do
         write_to_file /sys/devices/system/cpu/cpu$rt_cpu/cpufreq/scaling_governor performance
     done
 
