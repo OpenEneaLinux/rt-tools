@@ -62,6 +62,17 @@ check_optional_module(LTTNG_UST lttng-ust)
 # Add version number as macros when compiling
 add_definitions(-Dbitcalc_VERSION_MAJOR=${bitcalc_VERSION_MAJOR} -Dbitcalc_VERSION_MINOR=${bitcalc_VERSION_MINOR})
 
+# Determine version of compiler. Needed to know whether some warnings need to
+# be disabled.
+if (CMAKE_COMPILER_IS_GNUCC)
+    execute_process(COMMAND ${CMAKE_C_COMPILER} -dumpversion
+                    OUTPUT_VARIABLE GCC_VERSION)
+else()
+    # Fake version to something low for non-GCC compilers, so all fancy
+    # features get disabled.
+    set(GCC_VERSION 0.0)
+endif()
+
 #####################
 # Add a few warnings
 #
@@ -80,7 +91,11 @@ add_definitions(-Werror)
 add_definitions(-Wshadow)
 
 # Catch the most common "use before initialized"
-add_definitions(-Wuninitialized)
+# Only enabled for more recent GCC, since it otherwise produces too many false
+# positives.
+if (GCC_VERSION VERSION_GREATER 4.8 OR GCC_VERSION VERSION_EQUAL 4.8)
+    add_definitions(-Wuninitialized)
+endif()
 
 # Initializing with value dependent on itself
 add_definitions(-Winit-self)

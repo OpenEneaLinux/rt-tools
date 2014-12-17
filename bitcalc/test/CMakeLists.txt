@@ -1,8 +1,8 @@
 # Add sanitizer
-# NOTE: Disabled since this requires too recent version of the compiler for
-#       Yocto builds. Those using newer version of the compiler may enable
-#       this.
-# set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
+# Only available in more recent GCC version.
+if (GCC_VERSION VERSION_GREATER 4.8 OR GCC_VERSION VERSION_EQUAL 4.8)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
+endif()
 
 # If check unit test framework is found
 check_optional_module(CHECK check)
