@@ -55,7 +55,8 @@ static size_t bitmap_stack_depth_max = 0;
 
 static char *bitmap_str(const struct bitmap_t *set)
 {
-	char *str;
+	char *str = NULL; /* GCC for ARM requires this initialization for some
+			   * reason */
 
 	switch (display_format) {
 	case format_mask:
