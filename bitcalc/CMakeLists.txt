@@ -93,7 +93,7 @@ add_definitions(-Wshadow)
 # Catch the most common "use before initialized"
 # Only enabled for more recent GCC, since it otherwise produces too many false
 # positives.
-if (GCC_VERSION VERSION_GREATER 4.8 OR GCC_VERSION VERSION_EQUAL 4.8)
+if (GCC_VERSION VERSION_GREATER 4.9 OR GCC_VERSION VERSION_EQUAL 4.9)
     add_definitions(-Wuninitialized)
 endif()
 
