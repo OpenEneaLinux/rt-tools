@@ -65,10 +65,12 @@ extern struct bitmap_t *bitmap_alloc_from_u32_list(const char *mlist);
  */
 
 /* Return 1 if bit is set in bit mask, 0 otherwise. */
-extern int bitmap_isset(size_t bit, const struct bitmap_t *set);
+extern int bitmap_isset(size_t bit, const struct bitmap_t *set)
+	__attribute__ ((pure));
 
 /* Return the number of bits set in bit mask. */
-extern size_t bitmap_bit_count(const struct bitmap_t *set);
+extern size_t bitmap_bit_count(const struct bitmap_t *set)
+	__attribute__ ((pure));
 
 /*
  * Modify bitmap
