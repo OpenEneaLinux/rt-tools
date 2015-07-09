@@ -424,7 +424,7 @@ create () {
     local datestr=$( date +"%Y-%m-%d--%r" )
     local rt_mask=0
     local nrt_mask=0
-    local available_cpu_mask=$( ${bitcalc} '&'$( nproc --all ))
+    local available_cpu_mask=$( ${bitcalc} '&'$(printf '%x\n' $(nproc --all)))
     local migrate_bwq=true
     local disable_machine_check=true
     local defer_ticks=true
@@ -662,7 +662,7 @@ restore_from_file () {
 undo () {
     CPUSET_ROOT=$(get_cpuset_root)
     CPUSET_PREFIX=$(get_cpuset_prefix $CPUSET_ROOT)
-    local mask=$( ${bitcalc} '&'$( nproc --all ))
+    local mask=$( ${bitcalc} '&'$(printf '%x\n' $(nproc --all)))
     local settings_file=""
 
     while getopts ":hs:" o; do
