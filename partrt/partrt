@@ -114,6 +114,9 @@ If <cmd> is create:
         -t           Do not disable real-time throttling when creating a
                      new partition
 
+        -u           Do not migrate unbound workqueues when creating a new
+                     partition
+
         -w           Do not disable watchdog timer when creating a new
                      partition
 
@@ -198,6 +201,7 @@ readonly DEFAULT_RT_PARTITION=rt
 readonly DEFAULT_NRT_PARTITION=nrt
 readonly MASK_MSB=31
 readonly PARTRT_SETTINGS_FILE="/tmp/partrt_env"
+readonly UNBOUND_WQ_CPUMASK="/sys/devices/virtual/workqueue/cpumask"
 
 ################
 # partrt options
@@ -433,10 +437,11 @@ create () {
     local numa_partition=false
     local restart_hotplug=true
     local disable_throttle=true
+    local migrate_unbound_wq=true
     local disable_watchdog=true
     local numa_node=0
 
-    while getopts ":abcdhmn:rtw" o; do
+    while getopts ":abcdhmn:rtuw" o; do
         case "${o}" in
             a) disable_numa_affinity=false;;
             b) migrate_bwq=false;;
@@ -447,11 +452,21 @@ create () {
             n) numa_partition=true; numa_node=${OPTARG};;
             r) restart_hotplug=false;;
             t) disable_throttle=false;;
+            u) migrate_unbound_wq=false;;
             w) disable_watchdog=false;;
             \?) exit_msg "Invalid option: -${OPTARG} ";;
             :) exit_msg "Invalid option: -${OPTARG} missing mandatory argument";;
         esac
     done
+
+    if ! [ -e ${UNBOUND_WQ_CPUMASK} ]; then
+        migrate_unbound_wq=false
+        cat >&2 << EOF
+WARNING: Your kernel doesn't support reconfiguring of unbound workqueues cpumask.
+You might want to upgrade to Linux 4.2 or backport this commit:
+https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=042f7df
+EOF
+    fi
 
     shift $(( ${OPTIND} - 1 ))
     if [ "$numa_partition" = false ]; then
@@ -576,6 +591,12 @@ create () {
     ########################################
     if [ "$migrate_bwq" = true ]; then
         log_prev_and_apply /sys/bus/workqueue/devices/writeback/cpumask $(printf "%s" $nrt_mask)
+    fi
+
+    # Move unbound workqueues
+    ########################################
+    if [ "$migrate_unbound_wq" = true ]; then
+        log_prev_and_apply ${UNBOUND_WQ_CPUMASK} ${nrt_mask}
     fi
 
     # Disable machine check (Writing 0 to machinecheck0/check_interval will
@@ -718,6 +739,7 @@ undo () {
         write_to_file /proc/sys/kernel/watchdog 1
         write_to_file /sys/devices/system/machinecheck/machinecheck0/check_interval 300
         write_to_file /sys/bus/workqueue/devices/writeback/cpumask $(echo $(printf "%s" $mask))
+        write_to_file ${UNBOUND_WQ_CPUMASK} ${mask}
     fi
 
     echo "System was successfully restored"
