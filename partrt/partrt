@@ -779,13 +779,13 @@ run () {
 
     write_to_file $CPUSET_ROOT/$partition/tasks $$
 
-    cpumask=$(${bitcalc} $cpumask)
+    cpumask=0x$(${bitcalc} $cpumask)
 
-    rt_mask=$(fgrep -w Cpus_allowed "/proc/$$/status" | cut -f 2)
+    rt_mask=0x$(fgrep -w Cpus_allowed "/proc/$$/status" | cut -f 2)
 
-    if [ $cpumask -ne 0 ]; then
-        if [ $(${bitcalc} $cpumask $rt_mask and) -eq $cpumask ]; then
-            taskset -p $(printf "0x%s" "$cpumask") "$$" 2>&1 > /dev/null
+    if [ $(($cpumask)) -ne 0 ]; then
+        if [ $((0x$(${bitcalc} $cpumask $rt_mask and))) -eq $(($cpumask)) ]; then
+            taskset -p "$cpumask" "$$" 2>&1 > /dev/null
         else
             exit_msg "Invalid cpumask: $cpumask contains one or more CPUs that are not part of $partition"
         fi
@@ -829,13 +829,13 @@ move () {
 
     move_task $pid $partition
 
-    cpumask=$( ${bitcalc} $cpumask )
+    cpumask=0x$( ${bitcalc} $cpumask )
 
-    rt_mask=$(fgrep -w Cpus_allowed "/proc/$pid/status" | cut -f 2)
+    rt_mask=0x$(fgrep -w Cpus_allowed "/proc/$pid/status" | cut -f 2)
 
-    if [ $cpumask -ne 0 ]; then
-        if [ $( ${bitcalc} $cpumask $rt_mask and ) -eq $cpumask ]; then
-            taskset -p $(printf "0x%s" "$cpumask") "$pid" 2>&1 > /dev/null
+    if [ $(($cpumask)) -ne 0 ]; then
+        if [ $(($( ${bitcalc} $cpumask $rt_mask and ))) -eq $(($cpumask)) ]; then
+            taskset -p "$cpumask" "$pid" 2>&1 > /dev/null
         else
             exit_msg "Invalid cpumask: $cpumask contains one or more CPUs that are not part of $partition"
         fi
