@@ -425,7 +425,7 @@ create () {
     CPUSET_PREFIX=$(get_cpuset_prefix $CPUSET_ROOT)
     local isolated_cpu_list=""
     local nonisolated_cpu_list=""
-    local datestr=$( date +"%Y-%m-%d--%r" )
+    local datestr=$( date +"%Y-%m-%d-%H-%M-%S" )
     local rt_mask=0
     local nrt_mask=0
     local available_cpu_mask=$( ${bitcalc} '&'$(printf '%x\n' $(nproc --all)))
