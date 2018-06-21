@@ -11,14 +11,8 @@ The following tools are available:
 
 Executable  | Description
 ------------|-----------------------------------------------------------------
-partrt      | Partition the CPUs into two sets: One set for real-time
-            | applications and one set for the rest. The goal for this tool is
-            | to achive tickless execution on the real-time CPU set.
-            | See man page found in "doc" sub-directory for more information.
-            |
-count_ticks | Counts number of ticks that occurs when executing one or several
-            | shell commands. Uses ftrace for this.
-            |
+partrt      | Partition the CPUs into two sets: <br> One set for real-time applications and one set for the rest. The goal for this tool is to achive tickless execution on the real-time CPU set. <br> See man page found in "doc" sub-directory for more information.
+count_ticks | Counts number of ticks that occur when executing one or several shell commands. Uses ftrace for this.
 bitcalc     | Bit calculator, helper application for partrt script.
 
 Installing
