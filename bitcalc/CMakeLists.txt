@@ -60,7 +60,7 @@ endmacro (check_optional_module)
 check_optional_module(LTTNG_UST lttng-ust)
 
 # Common flags
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror -Wshadow -Wuninitialized -Winit-self -Wmissing-prototypes -Wformat-security -Wunused-parameter -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=noreturn -Wundef -Wpointer-arith -Wbad-function-cast -Wcast-qual -Wcast-align -Wwrite-strings -Wconversion -Wjump-misses-init -Wlogical-op -Wno-aggressive-loop-optimization -Wstrict-prototypes -Wmissing-declarations -Wredundant-decls -fstack-protector -Dbitcalc_VERSION_MAJOR=${bitcalc_VERSION_MAJOR} -Dbitcalc_VERSION_MINOR=${bitcalc_VERSION_MINOR}")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror -Wshadow -Wuninitialized -Winit-self -Wmissing-prototypes -Wformat-security -Wunused-parameter -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=noreturn -Wundef -Wpointer-arith -Wbad-function-cast -Wcast-qual -Wcast-align -Wwrite-strings -Wconversion -Wjump-misses-init -Wlogical-op -Wstrict-prototypes -Wmissing-declarations -Wredundant-decls -fstack-protector -Dbitcalc_VERSION_MAJOR=${bitcalc_VERSION_MAJOR} -Dbitcalc_VERSION_MINOR=${bitcalc_VERSION_MINOR}")
 
 # Application source directory
 add_subdirectory (src)
