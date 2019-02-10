@@ -398,8 +398,6 @@ static void usage(void)
 	     "Example:\n"
 	     "   bitcalc '#1-2,4-5 #2-4 xor'\n"
 	     "   echo '#1-2,4-5 #2-4 xor' | bitcalc --file=-\n");
-
-	exit(0);
 }
 
 static void version(void)
@@ -411,8 +409,6 @@ static void version(void)
 	       "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE,\n"
 	       "to the extent permitted by law.\n",
 	       bitcalc_VERSION_MAJOR, bitcalc_VERSION_MINOR);
-
-	exit(0);
 }
 
 int main(int argc, char *argv[])
@@ -436,8 +432,10 @@ int main(int argc, char *argv[])
 		switch (c) {
 		case 'h':
 			usage();
+			return 0;
 		case 'V':
 			version();
+			return 0;
 		case 'v':
 			option_verbose++;
 			break;
