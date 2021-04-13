@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 # Copyright (c) 2014 by Enea Software AB
 # All rights reserved.
@@ -33,7 +33,6 @@
 import os
 import sys
 import subprocess
-import StringIO
 import getopt
 import multiprocessing
 import time
@@ -86,7 +85,7 @@ global ref_count_irqs
 def print_msg(msg):
     global verbose
     if verbose == True:
-        print msg
+        print(msg)
 
 
 ################################################################################
@@ -444,7 +443,7 @@ def part_tc_1_1_prepare():
         rt_mask = options.rt_mask
         nrt_mask = ~rt_mask & (2 ** multiprocessing.cpu_count() - 1)
 
-        for line in stdout.splitlines():
+        for line in stdout.decode('utf-8').splitlines():
             if "Isolated CPUs (rt):" in line:
                 if rt_mask != liststr2mask(line.split(':')[1]):
                     print_msg("part_tc_1_1 : Failed, partrt returned bad RT CPU" +
@@ -480,7 +479,7 @@ def part_tc_1_2_prepare():
         found_rt = False
         found_nrt = False
 
-        for line in stdout.splitlines():
+        for line in stdout.decode('utf-8').splitlines():
             if "Name:rt" in line:
                 real_mask = liststr2mask(line.split(":")[2])
                 rt_mask = options.rt_mask
@@ -669,8 +668,8 @@ def part_tc_4_1_run():
 
         returncode = p.poll()
         if returncode is not None:
-            print ("part_tc_4_1: " + cmd + " unexpectedly returned with code: "
-                   + str(p.returncode))
+            print("part_tc_4_1: " + cmd + " unexpectedly returned with code: "
+                  + str(p.returncode))
             return FAIL
 
         (task_name, affinity, last_cpu, policy, prio) = get_task_info(p.pid)
@@ -722,8 +721,8 @@ def part_tc_4_2_run():
 
        returncode = p.poll()
        if returncode is not None:
-           print ("part_tc_4_2: " + cmd + " unexpectedly returned with code: "
-                  + str(returncode))
+           print("part_tc_4_2: " + cmd + " unexpectedly returned with code: "
+                 + str(returncode))
            return FAIL
 
        (task_name, affinity, last_cpu, policy, prio) = get_task_info(p.pid)
@@ -777,8 +776,8 @@ def part_tc_4_3_run():
 
         returncode = p.poll()
         if returncode is not None:
-            print ("part_tc_4_3: " + cmd + " unexpectedly returned with code: "
-                   + str(p.returncode))
+            print("part_tc_4_3: " + cmd + " unexpectedly returned with code: "
+                  + str(p.returncode))
             return FAIL
 
         (task_name, affinity, last_cpu, policy, prio) = get_task_info(p.pid)
@@ -931,8 +930,8 @@ def part_tc_8_mov():
 
         returncode = p1.poll()
         if returncode is not None:
-            print ("part_tc_8: " + cmd + " unexpectedly returned with code: "
-                   + str(returncode))
+            print("part_tc_8: " + cmd + " unexpectedly returned with code: "
+                  + str(returncode))
             return FAIL
 
         # Check that the process executes within the NRT partition
@@ -962,8 +961,8 @@ def part_tc_8_mov():
         p2.wait()
 
         if p2.returncode != 0:
-            print ("part_tc_8: " + cmd + "Returned with abnormal code: "
-                   + str(p2.returncode))
+            print("part_tc_8: " + cmd + "Returned with abnormal code: "
+                  + str(p2.returncode))
             return FAIL
 
         time.sleep(1)
@@ -1170,7 +1169,7 @@ def nopart_tc_2_1_help_text():
 
         found_usage = False
 
-        for line in stdout.splitlines():
+        for line in stdout.decode('utf-8').splitlines():
             if  "Usage:" in line:
                 found_usage = True
                 break
@@ -1203,7 +1202,7 @@ def nopart_tc_2_2_help_text():
 
         found_usage = False
 
-        for line in stdout.splitlines():
+        for line in stdout.decode('utf-8').splitlines():
             if  "Usage:" in line:
                 found_usage = True
                 break
@@ -1321,7 +1320,7 @@ def nopart_tc_4_copyright():
                       ": returned with abnormal code: ", p.returncode)
             return FAIL
 
-        for line in stdout.splitlines():
+        for line in stdout.decode('utf-8').splitlines():
             found = re.search("Copyright \(C\) (.*) by Enea Software AB", line)
             if found:
                 found_copyright = True
@@ -1380,18 +1379,18 @@ def cleanup():
 
 # input: programdir, gnuplotdir
 def usage():
-    print 'Usage:'
-    print '\tpartition_test <target> [-v] [-h]'
-    print '\tOptions:'
-    print '\t\t--help, -h:'
-    print '\t\t\tShow help text'
-    print '\t\t--verbose, -v:'
-    print '\t\t\tExtra verbose output'
-    print '\t\t\tSave test results'
-    print ''
-    print 'If <target> is not one of the preconfigured targets:'
-    print SUPPORTED_TARGETS
-    print 'a default configuration will be used.'
+    print('Usage:')
+    print('\tpartition_test <target> [-v] [-h]')
+    print('\tOptions:')
+    print('\t\t--help, -h:')
+    print('\t\t\tShow help text')
+    print('\t\t--verbose, -v:')
+    print('\t\t\tExtra verbose output')
+    print('\t\t\tSave test results')
+    print('')
+    print('If <target> is not one of the preconfigured targets:')
+    print(SUPPORTED_TARGETS)
+    print('a default configuration will be used.')
 
 def main(argv):
     global verbose
@@ -1402,8 +1401,8 @@ def main(argv):
 
     # Get mandatory parameter
     if len(argv) == 0:
-        print 'Missing target parameter'
-        print ''
+        print('Missing target parameter')
+        print('')
         usage()
         exit(1)
     else:
@@ -1414,7 +1413,7 @@ def main(argv):
         msg = "Unknown target: " + target
         msg += ": Trying default configuration"
         target = "default"
-        print msg
+        print(msg)
 
     options = targetOptions(target)
 
@@ -1433,7 +1432,7 @@ def main(argv):
             usage()
             exit(0)
         else:
-            print 'Unknown parameter: ', o
+            print('Unknown parameter: ', o)
             usage()
             exit(-1)
 
@@ -1564,9 +1563,9 @@ def main(argv):
     cleanup()
 
     if test_result == 0:
-        print "SUCCESS"
+        print("SUCCESS")
     else:
-        print "FAIL"
+        print("FAIL")
 
     sys.exit(test_result)
 
