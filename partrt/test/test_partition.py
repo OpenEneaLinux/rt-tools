@@ -435,7 +435,7 @@ def part_tc_1_1_prepare():
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
-            print_msg(stdout + stderr)
+            print_msg((stdout, stderr))
             print_msg("part_tc_1_1: Failed: partrt returned non-zero value: " +
                       str(p.returncode))
             return FAIL
@@ -471,7 +471,7 @@ def part_tc_1_2_prepare():
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
-            print_msg(stdout + stderr)
+            print_msg((stdout, stderr))
             print_msg("part_tc_1_2 Failed: " + cmd +
                    " returned with abnormal code: " + str(p.returncode))
             return FAIL
@@ -1020,7 +1020,7 @@ def part_tc_10_cleanup():
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
-            print_msg(stdout + stderr)
+            print_msg((stdout, stderr))
             print_msg("part_tc_10 Failed: " + cmd +
                    " returned with abnormal code: " + str(p.returncode))
             return FAIL
@@ -1058,7 +1058,7 @@ def nopart_tc_1_1_cleanup():
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
-            print_msg(stdout + stderr)
+            print_msg((stdout, stderr))
             print_msg("nopart_tc_1_1 Failed: " + cmd +
                    " returned with abnormal code: " + str(p.returncode))
             return FAIL
@@ -1069,7 +1069,7 @@ def nopart_tc_1_1_cleanup():
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
-            print_msg(stdout + stderr)
+            print_msg((stdout, stderr))
             print_msg("nopart_tc_1_1 Failed: " + cmd +
                    " returned with abnormal code: " + str(p.returncode))
             return FAIL
@@ -1109,7 +1109,7 @@ def nopart_tc_1_2_cleanup():
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
-            print_msg(stdout + stderr)
+            print_msg((stdout, stderr))
             print_msg("nopart_tc_1_2 Failed: " + cmd +
                    " returned with abnormal code: " + str(p.returncode))
             return FAIL
@@ -1128,7 +1128,7 @@ def nopart_tc_1_2_cleanup():
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
-            print_msg(stdout + stderr)
+            print_msg((stdout, stderr))
             print_msg("nopart_tc_1_2 Failed: " + cmd +
                    " returned with abnormal code: " + str(p.returncode))
             return FAIL
@@ -1161,7 +1161,7 @@ def nopart_tc_2_1_help_text():
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
-            print_msg(stdout + stderr)
+            print_msg((stdout, stderr))
             print_msg(
                 "nopart_tc_2: Failed: partrt returned with abnormal code: ",
                 str(p.returncode))
@@ -1194,7 +1194,7 @@ def nopart_tc_2_2_help_text():
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
-            print_msg(stdout + stderr)
+            print_msg((stdout, stderr))
             print_msg(
                 "nopart_tc_2_2: Failed: partrt returned with abnormal code: ",
                        p.returncode)
@@ -1315,7 +1315,7 @@ def nopart_tc_4_copyright():
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
-            print_msg(stdout + stderr)
+            print_msg((stdout, stderr))
             print_msg("nopart_tc_4: Failed: " + cmd +
                       ": returned with abnormal code: ", p.returncode)
             return FAIL
@@ -1357,7 +1357,7 @@ def cleanup():
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
-            print_msg(stdout + stderr)
+            print_msg((stdout, stderr))
             print("test_partition: Failed: " + cmd +
                   ": returned with abnormal code: ", p.returncode)
             sys.exit(1)
@@ -1367,7 +1367,7 @@ def cleanup():
         (stdout, stderr) = p.communicate()
 
         if p.returncode != 0:
-            print_msg(stdout + stderr)
+            print_msg((stdout, stderr))
             print("test_partition: Failed: " + cmd +
                   ": returned with abnormal code: ", p.returncode)
             return sys.exit(1)
