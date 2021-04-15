@@ -1,0 +1,49 @@
+---
+
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    name: binary packages
+    runs-on: ubuntu-latest
+    steps:
+    - id: checkout
+      name: checkout source
+      uses: actions/checkout@v2
+      with:
+        path: 'src'
+    - id: mkdir-build
+      name: create build directory
+      run: cmake -E make_directory build install
+    - id: config
+      name: configure build
+      run: cmake -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install ../src
+      working-directory: 'build'
+    - id: build-release
+      name: build release
+      run: cmake --build . --config Release
+      working-directory: 'build'
+    - id: build-debug
+      name: build debug
+      run: cmake --build . --config Debug
+      working-directory: 'build'
+    - id: install-release
+      name: install release
+      run: |
+          cmake install
+          echo "${{ github.workspace }}/install" >> $GITHUB_PATH
+      working-directory: 'build'
+    - id: run-test-partition
+      name: run test_partition
+      run: src/partrt/test/test_partition.py default
+    - id: run-ctest
+      name: run ctest
+      run: ctest
+      working-directory: 'build'
+    - id: build-packages
+      name: build packages
+      run: |
+          cmake --build . --config Release --target package
+      working-directory: 'build'
+

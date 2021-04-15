@@ -3,17 +3,6 @@ cmake_minimum_required (VERSION 2.6)
 # Custom variants of package finders
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/Modules/")
 
-# Create bitcalc project, which is a binary
-project (bitcalc)
-
-# Create "test" build target, used by test subdirectory
-enable_testing()
-set(CTEST_OUTPUT_ON_FAILURE ON)
-
-# The version number for bitcalc tool
-set (bitcalc_VERSION_MAJOR 1)
-set (bitcalc_VERSION_MINOR 0)
-
 # Find pkg-config tool to be used when searching for check library
 # See http://www.cmake.org/cmake/help/v2.8.2/cmake.html#module:FindPkgConfig
 find_package(PkgConfig)
@@ -60,7 +49,7 @@ endmacro (check_optional_module)
 check_optional_module(LTTNG_UST lttng-ust)
 
 # Common flags
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror -Wshadow -Wuninitialized -Winit-self -Wmissing-prototypes -Wformat-security -Wunused-parameter -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=noreturn -Wundef -Wpointer-arith -Wbad-function-cast -Wcast-qual -Wcast-align -Wwrite-strings -Wconversion -Wjump-misses-init -Wlogical-op -Wstrict-prototypes -Wmissing-declarations -Wredundant-decls -fstack-protector -Dbitcalc_VERSION_MAJOR=${bitcalc_VERSION_MAJOR} -Dbitcalc_VERSION_MINOR=${bitcalc_VERSION_MINOR}")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror -Wshadow -Wuninitialized -Winit-self -Wmissing-prototypes -Wformat-security -Wunused-parameter -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=noreturn -Wundef -Wpointer-arith -Wbad-function-cast -Wcast-qual -Wcast-align -Wwrite-strings -Wconversion -Wjump-misses-init -Wlogical-op -Wstrict-prototypes -Wmissing-declarations -Wredundant-decls -fstack-protector -Dbitcalc_VERSION_MAJOR=${PROJECT_VERSION_MAJOR} -Dbitcalc_VERSION_MINOR=${PROJECT_VERSION_MINOR}")
 
 # Application source directory
 add_subdirectory (src)

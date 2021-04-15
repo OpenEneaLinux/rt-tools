@@ -23,7 +23,7 @@ to install:
 
     cd <build root>
     cmake <src root> -DCMAKE_INSTALL_PREFIX:PATH=<prefix>
-    make install DESTDIR=<destdir>
+    cmake --build . --target install
 
 The installation directory will be
     <destdir>/<prefix>/bin
@@ -34,28 +34,8 @@ for man pages.
 If -DCMAKE_INSTALL_PREFIX:PATH is not given, then the default value is:
     /usr/local
 
-The default value for DESTDIR is the empty string.
-
 Contributing
 ------------
 
-Send pull requests, patches, comments or questions to
-
-     rt-tools@lists.enea.com
-
-When sending single patches, please using something like:
-
-     git send-email -1 --to rt-tools@lists.enea.com --subject-prefix=rt-tools][PATCH --compose
-
-or, if this is re-send of patch having a version number 2:
-
-     git send-email -1 --to rt-tools@lists.enea.com --subject-prefix=rt-tools][PATCH v2 --compose
-
-For multiple patches, "-1" is increased with how many patches from the top to
-be sent.
-
-Maintainer
-----------
-
-Mats Liljegren <mats.liljegren@enea.com>
+Follow standard GitHub pull-request procedures.
 
