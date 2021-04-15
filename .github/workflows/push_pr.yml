@@ -35,7 +35,7 @@ jobs:
       working-directory: 'build'
     - id: run-test-partition
       name: run test_partition
-      run: PATH=${PATH}:${{ github.workspace}}/install/bin sudo src/partrt/test/test_partition.py default -v
+      run: sudo /bin/bash -c "PATH=${PATH}:${{ github.workspace}}/install/bin src/partrt/test/test_partition.py default -v"
     - id: run-ctest
       name: run ctest
       run: ctest
