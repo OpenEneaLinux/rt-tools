@@ -5,7 +5,7 @@ on:
   pull_request:
 jobs:
   test:
-    name: binary packages
+    name: test on push or pull-request
     runs-on: ubuntu-latest
     steps:
     - id: checkout
@@ -31,7 +31,7 @@ jobs:
     - id: install-release
       name: install release
       run: |
-          cmake install
+          cmake --build . --target install
           echo "${{ github.workspace }}/install" >> $GITHUB_PATH
       working-directory: 'build'
     - id: run-test-partition
