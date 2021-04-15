@@ -32,11 +32,10 @@ jobs:
       name: install release
       run: |
           cmake --build . --target install
-          echo "${{ github.workspace }}/install" >> $GITHUB_PATH
       working-directory: 'build'
     - id: run-test-partition
       name: run test_partition
-      run: src/partrt/test/test_partition.py default -v
+      run: PATH=${PATH}:${{ github.workspace}}/install/bin src/partrt/test/test_partition.py default -v
     - id: run-ctest
       name: run ctest
       run: ctest
