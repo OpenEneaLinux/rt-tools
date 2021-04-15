@@ -36,7 +36,7 @@ jobs:
       working-directory: 'build'
     - id: run-test-partition
       name: run test_partition
-      run: src/partrt/test/test_partition.py -v default
+      run: src/partrt/test/test_partition.py default -v
     - id: run-ctest
       name: run ctest
       run: ctest
