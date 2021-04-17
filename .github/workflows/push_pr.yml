@@ -20,7 +20,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - id: c-lint
       name: c-linter
-      uses: ArtificialAmateur/clang-tidy-action@0.01
+      uses: ArtificialAmateur/cpp-linter-action@0.01
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - id: mkdir-build
