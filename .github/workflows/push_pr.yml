@@ -19,6 +19,13 @@ jobs:
       uses: github/super-linter@v3
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      working-directory: 'src'
+    - id: c-lint
+      name: c-linter
+      uses: ArtificialAmateur/clang-tidy-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      working-directory: 'src'
     - id: mkdir-build
       name: create build directory
       run: cmake -E make_directory build install
