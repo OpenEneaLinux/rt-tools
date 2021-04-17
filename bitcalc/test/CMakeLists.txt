@@ -1,4 +1,7 @@
 # Add sanitizer
+# Leak test will be turned off using ASAN_OPTIONS and test properties,
+# since bitcalc does no resource cleanup by design. It is a one-shot
+# utility, so it relies on libc to perform resource cleanups.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
 
 # If check unit test framework is found
@@ -44,17 +47,26 @@ endmacro (build_test)
 #   do_test
 macro (do_test test_name command)
   add_test (${test_name} sh -c "(${command}) ${LCOV_COLLECT}")
-  set_tests_properties (${test_name} PROPERTIES TIMEOUT "20")
+  set_tests_properties (${test_name} PROPERTIES
+    TIMEOUT "20"
+    ENVIRONMENT ASAN_OPTIONS=detect_leaks=0
+  )
 endmacro (do_test)
 
 macro (do_test_regex test_name command result)
   do_test(${test_name} ${command})
-  set_tests_properties (${test_name} PROPERTIES PASS_REGULAR_EXPRESSION ${result})
+  set_tests_properties (${test_name} PROPERTIES
+    PASS_REGULAR_EXPRESSION ${result}
+    ENVIRONMENT ASAN_OPTIONS=detect_leaks=0
+)
 endmacro (do_test_regex)
 
 macro (do_fail_test_regex test_name command result)
   do_test(${test_name} ${command})
-  set_tests_properties (${test_name} PROPERTIES WILL_FAIL true FAIL_REGULAR_EXPRESSION ${result})
+  set_tests_properties (${test_name}
+    PROPERTIES WILL_FAIL true FAIL_REGULAR_EXPRESSION ${result}
+    ENVIRONMENT ASAN_OPTIONS=detect_leaks=0
+)
 endmacro (do_fail_test_regex)
 
 #
