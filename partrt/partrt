@@ -834,7 +834,7 @@ move () {
     rt_mask=0x$(fgrep -w Cpus_allowed "/proc/$pid/status" | cut -f 2)
 
     if [ $(($cpumask)) -ne 0 ]; then
-        if [ $(($( ${bitcalc} $cpumask $rt_mask and ))) -eq $(($cpumask)) ]; then
+        if [ $((0x$(${bitcalc} $cpumask $rt_mask and))) -eq $(($cpumask)) ]; then
             taskset -p "$cpumask" "$pid" 2>&1 > /dev/null
         else
             exit_msg "Invalid cpumask: $cpumask contains one or more CPUs that are not part of $partition"
