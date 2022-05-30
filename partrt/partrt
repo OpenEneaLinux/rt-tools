@@ -483,7 +483,7 @@ EOF
     [ $( ${bitcalc} $rt_mask $available_cpu_mask and print-bit-count ) -eq 0 ] && exit_msg "Illegal CPU mask: $rt_mask"
 
     isolated_cpu_list=$(${bitcalc} --format=list $rt_mask)
-    nrt_mask=$(${bitcalc} $rt_mask $available_cpu_mask xor)
+    nrt_mask=$(${bitcalc} -F u32list $rt_mask $available_cpu_mask xor)
     nonisolated_cpu_list=$(${bitcalc} --format=list $nrt_mask)
 
     # Check if there are present partitions
