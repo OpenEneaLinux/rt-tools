@@ -209,6 +209,7 @@ readonly UNBOUND_WQ_CPUMASK="/sys/devices/virtual/workqueue/cpumask"
 rt_partition=$DEFAULT_RT_PARTITION
 nrt_partition=$DEFAULT_NRT_PARTITION
 verbose=false
+write_timeout=5
 
 ##################
 # Helper functions
@@ -253,20 +254,41 @@ get_arg()
     printf "%s" "$2"
 }
 
+# Get monotonic time. Useful to implement timeouts, which do not break when
+# the wall clock is shifted.
+get_monotonic()
+{
+    cut -d. -f1 /proc/uptime
+}
 
 # Writes values to file and does proper error checking
+# If writing fails with EBUSY, then keep retrying for 5s
 # $1 File
 # $2 Value
 write_to_file () {
-    local file=$1
-    local val=$2
+    local -ri start=$(get_monotonic)
+    local -r file="$1"
+    local -r val="$2"
 
-    if [ -e $file ]; then
-        echo $val > $file || exit_msg "Failed to write $val into $file"
-        verbose_printf "echo $val > $file"
-    else
+    if ! [ -e "$file" ]; then
         verbose_printf "$file: Does not exist"
+        return
     fi
+
+    while true; do
+        local err=$(LC_ALL=C echo 2>&1 "$val" > "$file")
+        if [ $? -eq 0 ]; then
+            verbose_printf "echo $val > $file"
+            return
+        fi
+        if ! echo "$err" | grep -q 'Device or resource busy'; then
+            exit_msg "Failed to write $val into $file: $err"
+        fi
+        if [ "$(get_monotonic)" -gt "$((start+write_timeout))" ]; then
+            exit_msg "Failed to write $val into $file: Timed-out"
+        fi
+        sleep 0.2
+    done
 }
 
 # Log preveous value to file and apply new value
