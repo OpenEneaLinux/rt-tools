@@ -266,9 +266,9 @@ get_monotonic()
 # $1 File
 # $2 Value
 write_to_file () {
-    local -ri start=$(get_monotonic)
-    local -r file="$1"
-    local -r val="$2"
+    local start=$(get_monotonic)
+    local file="$1"
+    local val="$2"
 
     if ! [ -e "$file" ]; then
         verbose_printf "$file: Does not exist"
